@@ -1,14 +1,23 @@
 from itertools import product
 
 import cgen
+import numpy as np
 
-from devito.ir.iet import (List, Prodder, FindNodes, Transformer, make_efunc,
-                           compose_nodes, filter_iterations, retrieve_iteration_tree)
-from devito.passes.iet.engine import iet_pass
-from devito.tools import flatten, is_integer, split
+from devito.data import FULL
+from devito.ir import DummyEq
+from devito.ir.iet import (BlankLine, Expression, List, LocalExpression, Prodder,
+                           FindNodes, FindSymbols, Transformer, make_efunc, compose_nodes,
+                           filter_iterations, retrieve_iteration_tree)
 from devito.logger import warning
+from devito.passes.iet.engine import iet_pass
+from devito.symbolics import (DefFunction, MacroArgument, ccode, retrieve_indexed,
+                              uxreplace)
+from devito.tools import DefaultOrderedDict, flatten, is_integer, prod, split
+from devito.types import Symbol, FIndexed, Indexed
+from devito.types.basic import IndexedData
 
-__all__ = ['avoid_denormals', 'hoist_prodders', 'relax_incr_dimensions', 'is_on_device']
+__all__ = ['avoid_denormals', 'hoist_prodders', 'relax_incr_dimensions', 'linearize',
+           'is_on_device']
 
 
 @iet_pass
@@ -117,6 +126,77 @@ def relax_incr_dimensions(iet, **kwargs):
     iet = Transformer(mapper).visit(iet)
 
     return iet, {'efuncs': efuncs}
+
+
+@iet_pass
+def linearize(iet, **kwargs):
+    """
+    Turn n-dimensional Indexeds into 1-dimensional Indexed with suitable index
+    access function, such as `a[i, j]` -> `a[i*n + j]`.
+    """
+    sregistry = kwargs['sregistry']
+
+    # Find unique sizes (unique -> minimize necessary registers)
+    functions = [f for f in FindSymbols().visit(iet) if f.is_AbstractFunction]
+    functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
+    mapper = DefaultOrderedDict(list)
+    for f in functions:
+        for d in f.dimensions[1:]:  # NOTE: the outermost dimension is unnecessary
+            # TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
+            mapper[(d, f._size_halo[d], f.grid)].append(f)
+
+    # Build all exprs such as `const int xs = u_vec->size[1];`
+    imapper = DefaultOrderedDict(list)
+    stmts = []
+    for (d, halo, _), v in mapper.items():
+        name = sregistry.make_name(prefix='%s_fsz' % d.name)
+        s = Symbol(name=name, dtype=np.int32, is_const=True)
+        expr = DummyEq(s, v[0]._C_get_field(FULL, d).size)
+        stmts.append(LocalExpression(expr))
+        for f in v:
+            imapper[f].append((d, s))
+    stmts.append(BlankLine)
+
+    # Build all exprs such as:
+    #const int u_t_slice = xs*ys*zs;  // consequently, same for u, b, damp, vp!
+    built = {}
+    # {f -> {d -> d_fsz_0, x -> x_fsz_0}}
+    mapper = DefaultOrderedDict(list)
+    for f, v in imapper.items():
+        for n, (d, _) in enumerate(v):
+            expr = prod(list(zip(*v[n:]))[1])
+            try:
+                s = built[expr]
+            except KeyError:
+                name = sregistry.make_name(prefix='%s_slc' % d.name)
+                s = built[expr] = Symbol(name=name, dtype=np.int32, is_const=True)
+                stmts.append(LocalExpression(DummyEq(s, expr)))
+
+            mapper[f].append(s)
+    stmts.append(BlankLine)
+
+    # Build defines. For example:
+    # `define uL(t, x, y, z) ul[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
+    headers = []
+    for f, szs in mapper.items():
+        assert len(szs) == len(f.dimensions) - 1
+        expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
+        expr += MacroArgument(f.dimensions[-1].name)
+        expr = Indexed(IndexedData('%sl' % f.name, None, f), expr)
+        define = DefFunction('%sL' % f.name, f.dimensions)
+        headers.append((ccode(define), ccode(expr)))
+
+    # Build "functional" Indexeds. For example:
+    # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
+    mapper = {}
+    for n in FindNodes(Expression).visit(iet):
+        subs = {i: FIndexed(i, suffix='l') for i in retrieve_indexed(n.expr)}
+        mapper[n] = n._rebuild(expr=uxreplace(n.expr, subs))
+
+    iet = Transformer(mapper).visit(iet)
+    iet = iet._rebuild(body=List(body=list(stmts) + list(iet.body)))
+
+    return iet, {'headers': headers}
 
 
 def is_on_device(obj, gpu_fit):
