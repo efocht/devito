@@ -14,7 +14,7 @@ from devito.ir import (EntryFunction, List, LocalExpression, FindSymbols,
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
-from devito.symbolics import Precedence, ccode
+from devito.symbolics import ccode
 from devito.tools import as_mapper, filter_sorted, flatten
 from devito.types import DeviceRM, FIndexed
 
