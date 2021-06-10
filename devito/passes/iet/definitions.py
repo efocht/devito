@@ -14,9 +14,9 @@ from devito.ir import (EntryFunction, List, LocalExpression, FindSymbols,
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
-from devito.symbolics import ccode
+from devito.symbolics import Precedence, ccode
 from devito.tools import as_mapper, filter_sorted, flatten
-from devito.types import DeviceRM
+from devito.types import DeviceRM, FIndexed
 
 __all__ = ['DataManager', 'DeviceAwareDataManager', 'Storage']
 
@@ -278,16 +278,25 @@ class DataManager(object):
             The input Iteration/Expression tree.
         """
         functions = FindSymbols().visit(iet)
-        need_cast = {i for i in functions if i.is_Tensor}
+        symbols = FindSymbols('free-symbols').visit(iet)
 
-        # Make the generated code less verbose by avoiding unnecessary casts
-        symbol_names = {i.name for i in FindSymbols('free-symbols').visit(iet)}
-        need_cast = {i for i in need_cast if i.name in symbol_names}
-
+        # Create Function -> n-dimensional array casts
+        # E.g. `float (*u)[u_vec->size[1]] = (float (*)[u_vec->size[1]]) u_vec->data`
+        symbol_names = {i.name for i in symbols}
+        need_cast = {i for i in functions if i.is_Tensor and i.name in symbol_names}
         casts = tuple(self.lang.PointerCast(i) for i in iet.parameters if i in need_cast)
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
+        iet = iet._rebuild(body=casts + iet.body)
 
+        # Create Function -> linearized n-dimensional array casts
+        # E.g. `float *ul = (float*) u_vec->data`
+        need_cast = {i.function: i for i in symbols
+                     if isinstance(i, FIndexed) and i.function in functions}
+        casts = tuple(self.lang.PointerCast(i, flat=need_cast[i]._C_name)
+                      for i in iet.parameters if i in need_cast)
+        if casts:
+            casts = (List(body=casts, footer=c.Line()),)
         iet = iet._rebuild(body=casts + iet.body)
 
         return iet, {}
