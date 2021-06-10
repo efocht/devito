@@ -291,10 +291,9 @@ class DataManager(object):
 
         # Create Function -> linearized n-dimensional array casts
         # E.g. `float *ul = (float*) u_vec->data`
-        need_cast = {i.function: i for i in symbols
-                     if isinstance(i, FIndexed) and i.function in functions}
-        casts = tuple(self.lang.PointerCast(i, flat=need_cast[i]._C_name)
-                      for i in iet.parameters if i in need_cast)
+        need_cast = OrderedDict([(i.function, i) for i in symbols
+                                 if isinstance(i, FIndexed) and i.function in functions])
+        casts = tuple(self.lang.PointerCast(k, flat=v._C_name) for k, v in need_cast.items())
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
         iet = iet._rebuild(body=casts + iet.body)

@@ -145,7 +145,7 @@ def linearize(iet, **kwargs):
             # TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
             mapper[(d, f._size_halo[d], f.grid)].append(f)
 
-    # Build all exprs such as `const int xs = u_vec->size[1];`
+    # Build all exprs such as `xs = u_vec->size[1]`
     imapper = DefaultOrderedDict(list)
     stmts = []
     for (d, halo, _), v in mapper.items():
@@ -157,10 +157,8 @@ def linearize(iet, **kwargs):
             imapper[f].append((d, s))
     stmts.append(BlankLine)
 
-    # Build all exprs such as:
-    #const int u_t_slice = xs*ys*zs;  // consequently, same for u, b, damp, vp!
+    # Build all exprs such as `y_slc0 = y_fsz0*z_fsz0`
     built = {}
-    # {f -> {d -> d_fsz_0, x -> x_fsz_0}}
     mapper = DefaultOrderedDict(list)
     for f, v in imapper.items():
         for n, (d, _) in enumerate(v):
@@ -171,8 +169,8 @@ def linearize(iet, **kwargs):
                 name = sregistry.make_name(prefix='%s_slc' % d.name)
                 s = built[expr] = Symbol(name=name, dtype=np.int32, is_const=True)
                 stmts.append(LocalExpression(DummyEq(s, expr)))
-
             mapper[f].append(s)
+    mapper.update([(f, []) for f in functions if f not in mapper])
     stmts.append(BlankLine)
 
     # Build defines. For example:
