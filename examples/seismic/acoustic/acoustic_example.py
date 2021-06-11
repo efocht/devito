@@ -47,6 +47,8 @@ def run(shape=(50, 50, 50), spacing=(20.0, 20.0, 20.0), tn=1000.0,
         solver.forward(save=save, vp=2.0)
 
     if not full_run:
+        print("norm(rec):", np.linalg.norm(rec.data))
+        print("norm(u):", np.linalg.norm(u.data))
         return summary.gflopss, summary.oi, summary.timings, [rec, u.data]
 
     # Smooth velocity
