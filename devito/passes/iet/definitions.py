@@ -296,7 +296,14 @@ class DataManager(object):
         casts = tuple(self.lang.PointerCast(k, flat=v._C_name) for k, v in need_cast.items())
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
-        iet = iet._rebuild(body=casts + iet.body)
+        #iet = iet._rebuild(body=casts + iet.body)  #TODO: HACKED AWAY TEMPORARILY
+
+        #TODO : HACK
+        assert len(iet.body) == 1
+        body = iet.body[0]
+        assert body.is_List
+        body = body._rebuild(body=casts + body.body)
+        iet = iet._rebuild(body=body)
 
         return iet, {}
 
