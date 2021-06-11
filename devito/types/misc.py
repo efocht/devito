@@ -107,8 +107,6 @@ class FIndexed(Indexed, Pickable):
 
     @property
     def _C_name(self):
-        #TODO HACK: IF SELF.FUNCTION.is_ARRAY THEN USE self.name...
-        from IPython import embed; embed()
         return self.srepr.name
 
     # Pickling support
