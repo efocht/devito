@@ -299,11 +299,12 @@ class DataManager(object):
         #iet = iet._rebuild(body=casts + iet.body)  #TODO: HACKED AWAY TEMPORARILY
 
         #TODO : HACK
-        assert len(iet.body) == 1
-        body = iet.body[0]
-        assert body.is_List
-        body = body._rebuild(body=casts + body.body)
-        iet = iet._rebuild(body=body)
+        if casts:
+            body = iet.body[-1]
+            assert body.is_List
+            body = body._rebuild(body=casts + body.body)
+            body = iet.body[:-1] + (body,)
+            iet = iet._rebuild(body=body)
 
         return iet, {}
 

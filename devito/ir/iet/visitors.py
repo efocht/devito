@@ -211,7 +211,7 @@ class CGen(Visitor):
         elif f.is_Array:  #TODO: HACK!
             obj = f.name
         else:
-            assert False  #TODO: HACK!
+            obj = f._C_name
         if f.is_PointerArray:
             lvalue = c.Value(f._C_typedata, '**%s' % f.name)
             rvalue = '(%s**) %s' % (f._C_typedata, obj)

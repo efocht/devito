@@ -143,7 +143,7 @@ def linearize(iet, **kwargs):
     for f in functions:
         for d in f.dimensions[1:]:  # NOTE: the outermost dimension is unnecessary
             # TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
-            mapper[(d, f._size_halo[d], f.grid)].append(f)
+            mapper[(d, f._size_halo[d], getattr(f, 'grid', None))].append(f)
 
     # Build all exprs such as `xs = u_vec->size[1]`
     imapper = DefaultOrderedDict(list)
@@ -151,7 +151,11 @@ def linearize(iet, **kwargs):
     for (d, halo, _), v in mapper.items():
         name = sregistry.make_name(prefix='%s_fsz' % d.name)
         s = Symbol(name=name, dtype=np.int32, is_const=True)
-        expr = DummyEq(s, v[0]._C_get_field(FULL, d).size)
+        try:
+            expr = DummyEq(s, v[0]._C_get_field(FULL, d).size)
+        except AttributeError:
+            assert v[0].is_Array
+            expr = DummyEq(s, v[0].symbolic_shape[d])
         stmts.append(LocalExpression(expr))
         for f in v:
             imapper[f].append((d, s))
@@ -175,20 +179,26 @@ def linearize(iet, **kwargs):
 
     # Build defines. For example:
     # `define uL(t, x, y, z) ul[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
+    built = {}  #TODO: a bit redundant...
     headers = []
     for f, szs in mapper.items():
         assert len(szs) == len(f.dimensions) - 1
+        pname = sregistry.make_name(prefix='%sL' % f.name)
+        sname = sregistry.make_name(prefix='%sl' % f.name)  #TODO: hacky...
+
         expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
         expr += MacroArgument(f.dimensions[-1].name)
-        expr = Indexed(IndexedData('%sl' % f.name, None, f), expr)
-        define = DefFunction('%sL' % f.name, f.dimensions)
+        expr = Indexed(IndexedData(sname, None, f), expr)
+        define = DefFunction(pname, f.dimensions)
         headers.append((ccode(define), ccode(expr)))
+        built[f] = (pname, sname)
 
     # Build "functional" Indexeds. For example:
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
     mapper = {}
     for n in FindNodes(Expression).visit(iet):
-        subs = {i: FIndexed(i, suffix='l') for i in retrieve_indexed(n.expr)}
+        subs = {i: FIndexed(i, pname=built[i.function][0], sname=built[i.function][1])  #TODO: hack
+                for i in retrieve_indexed(n.expr)}
         mapper[n] = n._rebuild(expr=uxreplace(n.expr, subs))
 
     iet = Transformer(mapper).visit(iet)
