@@ -87,7 +87,6 @@ class FIndexed(Indexed, Pickable):
     """
 
     def __new__(cls, indexed, pname, sname):
-        #TODO: pname, sname -- it's all quite hacky...
         plabel = Symbol(name=pname, dtype=indexed.dtype)
         base = IndexedData(plabel, shape=indexed.shape, function=indexed.function)
         obj = super().__new__(cls, base, *indexed.indices)
@@ -95,10 +94,6 @@ class FIndexed(Indexed, Pickable):
         obj.indexed = indexed
         obj.pname = pname
         obj.sname = sname
-
-        slabel = Symbol(name=sname, dtype=indexed.dtype)
-        base = IndexedData(slabel, shape=indexed.shape, function=indexed.function)
-        obj.srepr = Indexed(base, *indexed.indices)
 
         return obj
 
@@ -109,7 +104,7 @@ class FIndexed(Indexed, Pickable):
 
     @property
     def _C_name(self):
-        return self.srepr.name
+        return self.sname
 
     # Pickling support
     _pickle_args = ['indexed', 'pname', 'sname']
