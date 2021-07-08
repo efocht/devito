@@ -185,15 +185,14 @@ def linearize(iet, **kwargs):
     for f, szs in mapper.items():
         assert len(szs) == len(f.dimensions) - 1
         pname = sregistry.make_name(prefix='%sL' % f.name)
-        sname = sregistry.make_name(prefix='%sl' % f.name)  #TODO: hacky...
 
-        expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
-        expr += MacroArgument(f.dimensions[-1].name)
-        expr = Indexed(IndexedData(sname, None, f), expr)
+        index = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
+        index += MacroArgument(f.dimensions[-1].name)
+        expr = Indexed(IndexedData(f.name, None, f), index)
         define = DefFunction(pname, f.dimensions)
         headers.append((ccode(define), ccode(expr)))
 
-        findexeds[f] = lambda i, pname=pname, sname=sname: FIndexed(i, pname, sname)
+        findexeds[f] = lambda i, pname=pname: FIndexed(i, pname)
 
     # Build "functional" Indexeds. For example:
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`

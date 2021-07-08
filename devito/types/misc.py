@@ -86,19 +86,13 @@ class FIndexed(Indexed, Pickable):
     (secondary) represenation is flatten, that is `ux[x*ny + y]`.
     """
 
-    def __new__(cls, indexed, pname, sname):
-        #TODO: pname, sname -- it's all quite hacky...
+    def __new__(cls, indexed, pname):
         plabel = Symbol(name=pname, dtype=indexed.dtype)
         base = IndexedData(plabel, shape=indexed.shape, function=indexed.function)
         obj = super().__new__(cls, base, *indexed.indices)
 
         obj.indexed = indexed
         obj.pname = pname
-        obj.sname = sname
-
-        slabel = Symbol(name=sname, dtype=indexed.dtype)
-        base = IndexedData(slabel, shape=indexed.shape, function=indexed.function)
-        obj.srepr = Indexed(base, *indexed.indices)
 
         return obj
 
@@ -109,8 +103,8 @@ class FIndexed(Indexed, Pickable):
 
     @property
     def _C_name(self):
-        return self.srepr.name
+        return self.indexed.name
 
     # Pickling support
-    _pickle_args = ['indexed', 'pname', 'sname']
+    _pickle_args = ['indexed', 'pname']
     __reduce_ex__ = Pickable.__reduce_ex__
