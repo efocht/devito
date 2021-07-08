@@ -142,7 +142,8 @@ def linearize(iet, **kwargs):
     mapper = DefaultOrderedDict(list)
     for f in functions:
         for d in f.dimensions[1:]:  # NOTE: the outermost dimension is unnecessary
-            # TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
+            #TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
+            #TODO: need to provide option "assume-same-padding" ??
             mapper[(d, f._size_halo[d], getattr(f, 'grid', None))].append(f)
 
     # Build all exprs such as `xs = u_vec->size[1]`
@@ -179,8 +180,8 @@ def linearize(iet, **kwargs):
 
     # Build defines. For example:
     # `define uL(t, x, y, z) ul[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
-    built = {}  #TODO: a bit redundant...
     headers = []
+    findexeds = {}
     for f, szs in mapper.items():
         assert len(szs) == len(f.dimensions) - 1
         pname = sregistry.make_name(prefix='%sL' % f.name)
@@ -191,14 +192,14 @@ def linearize(iet, **kwargs):
         expr = Indexed(IndexedData(sname, None, f), expr)
         define = DefFunction(pname, f.dimensions)
         headers.append((ccode(define), ccode(expr)))
-        built[f] = (pname, sname)
+
+        findexeds[f] = lambda i, pname=pname, sname=sname: FIndexed(i, pname, sname)
 
     # Build "functional" Indexeds. For example:
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
     mapper = {}
     for n in FindNodes(Expression).visit(iet):
-        subs = {i: FIndexed(i, pname=built[i.function][0], sname=built[i.function][1])  #TODO: hack
-                for i in retrieve_indexed(n.expr)}
+        subs = {i: findexeds[i.function](i) for i in retrieve_indexed(n.expr)}
         mapper[n] = n._rebuild(expr=uxreplace(n.expr, subs))
 
     iet = Transformer(mapper).visit(iet)
