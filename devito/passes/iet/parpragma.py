@@ -57,8 +57,7 @@ class PragmaSimdTransformer(PragmaTransformer):
 
             # Add SIMD pragma
             indexeds = FindSymbols('indexeds').visit(candidate)
-            aligned = {i.name for i in indexeds
-                       if isinstance(i, FIndexed) or i.function.is_DiscreteFunction}
+            aligned = {i.name for i in indexeds if i.function.is_DiscreteFunction}
             if aligned:
                 simd = self.lang['simd-for-aligned']
                 simd = as_tuple(simd(','.join(sorted(aligned)), self.simd_reg_size))
