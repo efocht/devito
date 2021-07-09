@@ -9,7 +9,7 @@ from operator import itemgetter
 
 import cgen as c
 
-from devito.ir import (EntryFunction, List, LocalExpression, FindSymbols,
+from devito.ir import (EntryFunction, List, LocalExpression, FindNodes, FindSymbols,
                        MapExprStmts, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
@@ -50,6 +50,10 @@ class Storage(OrderedDict):
 
         self[k] = v
         self.defined.add(key)
+
+
+class Defs(List):
+    pass
 
 
 class DataManager(object):
@@ -177,7 +181,7 @@ class DataManager(object):
             if frees:
                 frees.insert(0, c.Line())
 
-            mapper[k] = k._rebuild(body=List(header=allocs, body=k.body, footer=frees),
+            mapper[k] = k._rebuild(body=Defs(header=allocs, body=k.body, footer=frees),
                                    **k.args_frozen)
 
         processed = Transformer(mapper, nested=True).visit(iet)
@@ -277,6 +281,11 @@ class DataManager(object):
         iet : Callable
             The input Iteration/Expression tree.
         """
+        body = iet.body[0]
+        if not isinstance(body, Defs):
+            # Sometimes we end up here -- an IET with no definitions
+            body = iet
+
         functions = FindSymbols().visit(iet)
         symbols = FindSymbols('free-symbols').visit(iet)
 
@@ -287,17 +296,32 @@ class DataManager(object):
         casts = tuple(self.lang.PointerCast(i) for i in iet.parameters if i in need_cast)
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
-        iet = iet._rebuild(body=casts + iet.body)
+            body = body._rebuild(body=casts + body.body)
 
         # Create Function -> linearized n-dimensional array casts
         # E.g. `float *ul = (float*) u_vec->data`
-        need_cast = OrderedDict([(i.function, i) for i in symbols
-                                 if isinstance(i, FIndexed) and i.function in functions])
-        casts = tuple(self.lang.PointerCast(k, flat=v._C_name) for k, v in need_cast.items())
+        casts = []
+        seen = set()
+        for i in symbols:
+            if not isinstance(i, FIndexed):
+                continue
+            f = i.function
+            if f in seen:
+                continue
+            seen.add(f)
+            if f in iet.parameters:
+                casts.append(self.lang.PointerCast(f, flat=i._C_name))
+            else:
+                casts.append(self.lang.PointerCast(f, flat=i._C_name, cname=f.name))
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
-        iet = iet._rebuild(body=casts + iet.body)  #TODO: HACKED AWAY TEMPORARILY
-        from IPython import embed; embed()
+            body = body._rebuild(body=casts + body.body)
+
+        # Incorporate the newly created casts
+        if isinstance(body, Defs):
+            iet = iet._rebuild(body=body)
+        else:
+            iet = body
 
         return iet, {}
 

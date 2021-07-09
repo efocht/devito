@@ -206,12 +206,8 @@ class CGen(Visitor):
             obj = o.obj.name
         elif isinstance(o.obj, ArrayObject):
             obj = '%s->%s' % (o.obj.name, f._C_name)
-        elif f.is_DiscreteFunction:  #TODO: HACK!
-            obj = f._C_name
-        elif f.is_Array:  #TODO: HACK!
-            obj = f.name
         else:
-            obj = f._C_name
+            obj = o.cname or f._C_name
         if f.is_PointerArray:
             lvalue = c.Value(f._C_typedata, '**%s' % f.name)
             rvalue = '(%s**) %s' % (f._C_typedata, obj)
