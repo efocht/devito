@@ -103,7 +103,7 @@ class FIndexed(Indexed, Pickable):
     __str__ = __repr__
 
     @property
-    def _C_name(self):
+    def name(self):
         return self.sname
 
     # Pickling support

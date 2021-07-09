@@ -310,9 +310,9 @@ class DataManager(object):
                 continue
             seen.add(f)
             if f in iet.parameters:
-                casts.append(self.lang.PointerCast(f, flat=i._C_name))
+                casts.append(self.lang.PointerCast(f, flat=i.name))
             else:
-                casts.append(self.lang.PointerCast(f, flat=i._C_name, cname=f.name))
+                casts.append(self.lang.PointerCast(f, flat=i.name, cname=f.name))
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
             body = body._rebuild(body=casts + body.body)
