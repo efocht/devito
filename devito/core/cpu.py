@@ -97,6 +97,9 @@ class Cpu64OperatorMixin(object):
         o['par-dynamic-work'] = oo.pop('par-dynamic-work', cls.PAR_DYNAMIC_WORK)
         o['par-nested'] = oo.pop('par-nested', cls.PAR_NESTED)
 
+        # Misc
+        o['linearize'] = oo.pop('linearize', False)
+
         # Recognised but unused by the CPU backend
         oo.pop('par-disabled', None)
         oo.pop('gpu-direct', None)
@@ -198,7 +201,8 @@ class Cpu64AdvOperator(Cpu64OperatorMixin, CoreOperator):
         relax_incr_dimensions(graph, sregistry=sregistry)
 
         # Linearize n-dimensional Indexeds
-        linearize(graph, sregistry=sregistry)
+        if options['linearize']:
+            linearize(graph, sregistry=sregistry)
 
         # Parallelism
         parizer = cls._Target.Parizer(sregistry, options, platform)
@@ -317,6 +321,7 @@ class Cpu64CustomOperator(Cpu64OperatorMixin, CustomOperator):
             'parallel': parizer.make_parallel,
             'openmp': parizer.make_parallel,
             'mpi': partial(mpiize, mode=options['mpi']),
+            'linearize': partial(linearize, sregistry=sregistry),
             'simd': partial(parizer.make_simd),
             'prodders': hoist_prodders,
             'init': parizer.initialize
@@ -331,7 +336,7 @@ class Cpu64CustomOperator(Cpu64OperatorMixin, CustomOperator):
         'blocking', 'topofuse', 'fuse', 'factorize', 'cire-sops', 'cse', 'lift',
         'opt-pows',
         # IET
-        'denormals', 'optcomms', 'openmp', 'mpi', 'simd', 'prodders',
+        'denormals', 'optcomms', 'openmp', 'mpi', 'linearize', 'simd', 'prodders',
     )
     _known_passes_disabled = ('tasking', 'streaming', 'gpu-direct', 'openacc')
     assert not (set(_known_passes) & set(_known_passes_disabled))
