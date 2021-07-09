@@ -251,16 +251,20 @@ class PragmaShmTransformer(PragmaSimdTransformer):
         # Vector-expand all written Arrays within `partree`, since at least
         # one of the parallelized Iterations requires thread-private Arrays
         # E.g. a(x, y) -> b(tid, x, y), where `tid` is the ThreadID Dimension
-        writes = [i.write for i in FindNodes(Expression).visit(partree)]
         vexpandeds = []
-        for i in writes:
+        for n in FindNodes(Expression).visit(partree):
+            i = n.write
             if not (i.is_Array or i.is_TempFunction):
                 continue
             elif i in parrays:
                 pi = parrays[i]
             else:
                 pi = parrays.setdefault(i, i._make_pointer(dim=self.threadid))
-            vexpandeds.append(VExpanded(i, pi))
+            if isinstance(n.output, FIndexed):
+                flat = n.output.name
+            else:
+                flat = None
+            vexpandeds.append(VExpanded(i, pi, flat=flat))
 
         if vexpandeds:
             init = c.Initializer(c.Value(self.threadid._C_typedata, self.threadid.name),

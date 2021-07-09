@@ -294,6 +294,7 @@ class DataManager(object):
         symbol_names = {i.name for i in symbols}
         need_cast = {i for i in functions if i.is_Tensor and i.name in symbol_names}
         casts = tuple(self.lang.PointerCast(i) for i in iet.parameters if i in need_cast)
+        from IPython import embed; embed()
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
             body = body._rebuild(body=casts + body.body)
