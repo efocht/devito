@@ -185,7 +185,7 @@ def linearize(iet, **kwargs):
     for f, szs in mapper.items():
         assert len(szs) == len(f.dimensions) - 1
         pname = sregistry.make_name(prefix='%sL' % f.name)
-        sname = sregistry.make_name(prefix='%sl' % f.name)  #TODO: hacky...
+        sname = sregistry.make_name(prefix='%sl' % f.name)
 
         expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
         expr += MacroArgument(f.dimensions[-1].name)
