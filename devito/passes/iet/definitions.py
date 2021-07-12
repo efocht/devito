@@ -287,15 +287,16 @@ class DataManager(object):
             body = iet
 
         symbols = FindSymbols('free-symbols').visit(iet)
+        symbol_names = {i.name for i in symbols}
 
         placed = set()
         placed.update({i.pointee for i in FindNodes(Dereference).visit(iet)})
 
         # Create Function -> n-dimensional array casts
         # E.g. `float (*u)[u_vec->size[1]] = (float (*)[u_vec->size[1]]) u_vec->data`
-        functions = [i for i in FindSymbols().visit(iet) if i.is_Tensor]
-        symbol_names = {i.name for i in symbols}
-        need_cast = {i for i in functions if i.name in symbol_names} - placed
+        functions = [i for i in FindSymbols().visit(iet)
+                     if i.is_Tensor and i.name in symbol_names]
+        need_cast = set(functions) - placed
         casts = tuple(self.lang.PointerCast(i) for i in iet.parameters if i in need_cast)
         if casts:
             casts = (List(body=casts, footer=c.Line()),)

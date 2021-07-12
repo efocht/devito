@@ -128,22 +128,33 @@ def relax_incr_dimensions(iet, **kwargs):
     return iet, {'efuncs': efuncs}
 
 
-@iet_pass
 def linearize(iet, **kwargs):
     """
     Turn n-dimensional Indexeds into 1-dimensional Indexed with suitable index
     access function, such as `a[i, j]` -> `a[i*n + j]`.
     """
+    linearize_accesses(iet, cache={}, **kwargs)
+
+
+@iet_pass
+def linearize_accesses(iet, **kwargs):
+    """
+    Actually implement linearize()
+    """
     sregistry = kwargs['sregistry']
+    cache = kwargs['cache']
 
     # Find unique sizes (unique -> minimize necessary registers)
-    functions = [f for f in FindSymbols().visit(iet) if f.is_AbstractFunction]
+    symbol_names = {i.name for i in FindSymbols('free-symbols').visit(iet)}
+    functions = [f for f in FindSymbols().visit(iet)
+                 if f.is_AbstractFunction and f.name in symbol_names]
     functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
     mapper = DefaultOrderedDict(list)
     for f in functions:
         for d in f.dimensions[1:]:  # NOTE: the outermost dimension is unnecessary
-            #TODO: THIS SHOULD TAKE PADDING INTO ACCOUNT TOO
-            #TODO: need to provide option "assume-same-padding" ??
+            # TODO: same grid + same halo => same padding, however this is never
+            # asserted throughout the compiler yet... maybe should do it when in
+            # debug mode at `prepare_arguments` time, ie right before jumping to C?
             mapper[(d, f._size_halo[d], getattr(f, 'grid', None))].append(f)
 
     # Build all exprs such as `xs = u_vec->size[1]`
@@ -160,7 +171,8 @@ def linearize(iet, **kwargs):
         stmts.append(LocalExpression(expr))
         for f in v:
             imapper[f].append((d, s))
-    stmts.append(BlankLine)
+    if imapper:
+        stmts.append(BlankLine)
 
     # Build all exprs such as `y_slc0 = y_fsz0*z_fsz0`
     built = {}
@@ -176,24 +188,29 @@ def linearize(iet, **kwargs):
                 stmts.append(LocalExpression(DummyEq(s, expr)))
             mapper[f].append(s)
     mapper.update([(f, []) for f in functions if f not in mapper])
-    stmts.append(BlankLine)
+    if mapper:
+        stmts.append(BlankLine)
 
     # Build defines. For example:
     # `define uL(t, x, y, z) ul[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
     headers = []
     findexeds = {}
     for f, szs in mapper.items():
-        assert len(szs) == len(f.dimensions) - 1
-        pname = sregistry.make_name(prefix='%sL' % f.name)
-        sname = sregistry.make_name(prefix='%sl' % f.name)
+        try:
+            # Perhaps we've already built an access macro for `f` through another efunc
+            findexeds[f] = cache[f]
+        except KeyError:
+            assert len(szs) == len(f.dimensions) - 1
+            pname = sregistry.make_name(prefix='%sL' % f.name)
+            sname = sregistry.make_name(prefix='%sl' % f.name)
 
-        expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
-        expr += MacroArgument(f.dimensions[-1].name)
-        expr = Indexed(IndexedData(sname, None, f), expr)
-        define = DefFunction(pname, f.dimensions)
-        headers.append((ccode(define), ccode(expr)))
+            expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
+            expr += MacroArgument(f.dimensions[-1].name)
+            expr = Indexed(IndexedData(sname, None, f), expr)
+            define = DefFunction(pname, f.dimensions)
+            headers.append((ccode(define), ccode(expr)))
 
-        findexeds[f] = lambda i, pname=pname, sname=sname: FIndexed(i, pname, sname)
+            cache[f] = findexeds[f] = lambda i, pn=pname, sn=sname: FIndexed(i, pn, sn)
 
     # Build "functional" Indexeds. For example:
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
