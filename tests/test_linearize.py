@@ -1,8 +1,8 @@
 import pytest
 import numpy as np
 
-from devito import Grid, TimeFunction, SparseTimeFunction, Operator, Eq, configuration
-from devito.ir import Expression, FindNodes, FindSymbols
+from devito import Grid, TimeFunction, SparseTimeFunction, Operator, Eq
+from devito.ir import Expression, FindNodes
 
 
 def test_basic():
