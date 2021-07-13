@@ -150,7 +150,7 @@ def linearize_accesses(iet, **kwargs):
     cache = kwargs['cache']
 
     # Find unique sizes (unique -> minimize necessary registers)
-    symbol_names = {i.name for i in FindSymbols('free-symbols').visit(iet)}
+    symbol_names = {i.name for i in FindSymbols('indexeds').visit(iet)}
     functions = [f for f in FindSymbols().visit(iet)
                  if f.is_AbstractFunction and f.name in symbol_names]
     functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
