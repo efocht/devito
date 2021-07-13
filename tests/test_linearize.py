@@ -49,7 +49,7 @@ def test_mpi():
 
 
 def test_cire():
-    grid = Grid(shape=(4, 4))
+    grid = Grid(shape=(4, 4, 4))
 
     u = TimeFunction(name='u', grid=grid, space_order=2)
     u1 = TimeFunction(name='u', grid=grid, space_order=2)
