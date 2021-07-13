@@ -73,6 +73,7 @@ def _uxreplace_handle(expr, args):
 
 @_uxreplace_handle.register(sympy.Min)
 @_uxreplace_handle.register(sympy.Max)
+@_uxreplace_handle.register(sympy.Pow)
 def _(expr, args):
     return expr.func(*args, evaluate=False)
 
