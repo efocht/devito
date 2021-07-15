@@ -805,12 +805,11 @@ class PointerCast(ExprStmt, Node):
 
     is_PointerCast = True
 
-    def __init__(self, function, obj=None, alignment=True, flat=None, cname=None):
+    def __init__(self, function, obj=None, alignment=True, flat=None):
         self.function = function
         self.obj = obj
         self.alignment = alignment
         self.flat = flat
-        self.cname = cname
 
     def __repr__(self):
         return "<PointerCast(%s)>" % self.function
@@ -876,6 +875,7 @@ class Dereference(ExprStmt, Node):
     @property
     def free_symbols(self):
         return ((self.pointee.indexed.label, self.pointer.indexed.label) +
+                (self.pointer.indexify(),) +
                 tuple(flatten(i.free_symbols for i in self.pointee.symbolic_shape[1:])) +
                 tuple(self.pointer.free_symbols))
 

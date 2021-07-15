@@ -192,8 +192,6 @@ class CGen(Visitor):
                     ret.append(self.visit(i))
                 elif i.is_LocalObject:
                     ret.append('&%s' % i._C_name)
-                elif i.is_ArrayBasic:
-                    ret.append("(%s)%s" % (i._C_typename, i.name))
                 else:
                     ret.append(i._C_name)
             except AttributeError:
@@ -207,7 +205,7 @@ class CGen(Visitor):
         elif isinstance(o.obj, ArrayObject):
             obj = '%s->%s' % (o.obj.name, f._C_name)
         else:
-            obj = o.cname or f._C_name
+            obj = f._C_name
         if f.is_PointerArray:
             lvalue = c.Value(f._C_typedata, '**%s' % f.name)
             rvalue = '(%s**) %s' % (f._C_typedata, obj)

@@ -15,7 +15,7 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
 from devito.symbolics import ccode
-from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten
+from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten, split
 from devito.types import DeviceRM, FIndexed
 
 __all__ = ['DataManager', 'DeviceAwareDataManager', 'Storage']
@@ -100,14 +100,14 @@ class DataManager(object):
         """
         Allocate an Array in the high bandwidth memory.
         """
-        decl = "(*%s)%s" % (obj.name, "".join("[%s]" % i for i in obj.symbolic_shape[1:]))
-        decl = c.Value(obj._C_typedata, decl)
+        decl = c.Value(obj._C_typedata, "*%s" % obj._C_name)
 
         shape = "".join("[%s]" % i for i in obj.symbolic_shape)
         size = "sizeof(%s%s)" % (obj._C_typedata, shape)
-        alloc = c.Statement(self.lang['alloc-host'](obj.name, obj._data_alignment, size))
+        alloc = c.Statement(self.lang['alloc-host'](obj._C_name,
+                                                    obj._data_alignment, size))
 
-        free = c.Statement(self.lang['free-host'](obj.name))
+        free = c.Statement(self.lang['free-host'](obj._C_name))
 
         storage.update(obj, site, allocs=(decl, alloc), frees=free)
 
@@ -132,15 +132,15 @@ class DataManager(object):
         by the owner thread.
         """
         # The pointer array
-        decl = "**%s" % obj.name
-        decl = c.Value(obj._C_typedata, decl)
+        decl = c.Value(obj._C_typedata, "**%s" % obj._C_name)
 
         size = 'sizeof(%s*)*%s' % (obj._C_typedata, obj.dim.symbolic_size)
-        alloc0 = c.Statement(self.lang['alloc-host'](obj.name, obj._data_alignment, size))
-        free0 = c.Statement(self.lang['free-host'](obj.name))
+        alloc0 = c.Statement(self.lang['alloc-host'](obj._C_name, obj._data_alignment,
+                                                     size))
+        free0 = c.Statement(self.lang['free-host'](obj._C_name))
 
         # The pointee Array
-        pobj = '%s[%s]' % (obj.name, obj.dim.name)
+        pobj = '%s[%s]' % (obj._C_name, obj.dim.name)
         shape = "".join("[%s]" % i for i in obj.array.symbolic_shape)
         size = "sizeof(%s%s)" % (obj._C_typedata, shape)
         alloc1 = c.Statement(self.lang['alloc-host'](pobj, obj._data_alignment, size))
@@ -304,18 +304,15 @@ class DataManager(object):
             # Sometimes we end up here -- an IET with no definitions
             body = iet
 
-        symbols = FindSymbols('free-symbols').visit(iet)
-        symbol_names = {i.name for i in symbols}
+        indexeds = FindSymbols('indexeds').visit(iet)
+        defines = set(FindSymbols('defines').visit(iet))
 
-        placed = set()
-        placed.update({i.pointee for i in FindNodes(Dereference).visit(iet)})
+        findexeds, iindexeds = split(indexeds, lambda i: isinstance(i, FIndexed))
 
         # Create Function -> n-dimensional array casts
         # E.g. `float (*u)[u_vec->size[1]] = (float (*)[u_vec->size[1]]) u_vec->data`
-        functions = [i for i in FindSymbols().visit(iet)
-                     if i.is_Tensor and i.name in symbol_names]
-        need_cast = set(functions) - placed
-        casts = tuple(self.lang.PointerCast(i) for i in iet.parameters if i in need_cast)
+        functions = sorted({i.function for i in iindexeds}, key=lambda i: i.name)
+        casts = tuple(self.lang.PointerCast(i) for i in functions if i not in defines)
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
             body = body._rebuild(body=casts + body.body)
@@ -323,17 +320,11 @@ class DataManager(object):
         # Create Function -> linearized n-dimensional array casts
         # E.g. `float *ul = (float*) u_vec->data`
         casts = []
-        for i in symbols:
-            if not isinstance(i, FIndexed):
+        for i in findexeds:
+            if i.function in defines:
                 continue
-            f = i.function
-            if f in placed:
-                continue
-            placed.add(f)
-            if f in iet.parameters:
-                casts.append(self.lang.PointerCast(f, flat=i.name))
-            else:
-                casts.append(self.lang.PointerCast(f, flat=i.name, cname=f.name))
+            defines.add(i.function)
+            casts.append(self.lang.PointerCast(i.function, flat=i.name))
         if casts:
             casts = (List(body=casts, footer=c.Line()),)
             body = body._rebuild(body=casts + body.body)
