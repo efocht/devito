@@ -215,7 +215,7 @@ def _make_thread_func(name, iet, root, threads, sregistry):
     tparameter = VoidPointer('_%s' % sdata.name)
 
     # Unpack `sdata`
-    symbol_names = {i.name for i in FindSymbols('free-symbols').visit(iet)}
+    symbol_names = {i.name for i in FindSymbols('basics').visit(iet)}
     unpack = [PointerCast(sdata, tparameter), BlankLine]
     for i in parameters:
         if i.is_AbstractFunction:

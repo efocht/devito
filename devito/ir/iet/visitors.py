@@ -14,7 +14,7 @@ from devito.ir.iet.nodes import Node, Iteration, Expression, Call, Lambda
 from devito.ir.support.space import Backward
 from devito.symbolics import ccode
 from devito.tools import GenericVisitor, as_tuple, filter_sorted, flatten
-from devito.types.basic import AbstractFunction
+from devito.types.basic import AbstractFunction, Basic
 from devito.types import ArrayObject, VoidPointer
 
 
@@ -600,30 +600,17 @@ class FindSymbols(Visitor):
     ----------
     mode : str, optional
         Drive the search. Accepted:
-        - ``symbolics``: Collect all AbstractFunction objects, default.
-        - ``free-symbols``: Collect all free symbols.
-        - ``indexeds``: Collect all Indexeds.
-        - ``defines``: Collect all defined (bound) objects.
+        - `symbolics`: Collect all AbstractFunction objects, default.
+        - `basics`: Collect all Basic objects.
+        - `indexeds`: Collect all Indexed objects.
+        - `defines`: Collect all defined objects.
     """
 
-    def _symbolics(e):
-        try:
-            return e.functions
-        except AttributeError:
-            # A SymPy expression
-            return [i for i in e.free_symbols if isinstance(i, AbstractFunction)]
-
-    def _defines(e):
-        try:
-            return as_tuple(e.defines)
-        except AttributeError:
-            return ()
-
     rules = {
-        'symbolics': _symbolics,
-        'free-symbols': lambda e: e.free_symbols,
-        'indexeds': lambda e: [i for i in e.free_symbols if i.is_Indexed],
-        'defines': _defines,
+        'symbolics': lambda n: n.functions,
+        'basics': lambda n: [i for i in n.basics if isinstance(i, Basic)],
+        'indexeds': lambda n: [i for i in n.basics if i.is_Indexed],
+        'defines': lambda n: as_tuple(n.defines),
     }
 
     def __init__(self, mode='symbolics'):
@@ -644,8 +631,7 @@ class FindSymbols(Visitor):
         return self.Retval(*[self._visit(i) for i in o.children], self.rule(o))
 
     def visit_Conditional(self, o):
-        return self.Retval(*[self._visit(i) for i in o.children],
-                           self.rule(o), self.rule(o.condition), node=o)
+        return self.Retval(*[self._visit(i) for i in o.children], self.rule(o), node=o)
 
     def visit_Expression(self, o):
         return self.Retval([f for f in self.rule(o)])
@@ -654,7 +640,7 @@ class FindSymbols(Visitor):
     visit_Dereference = visit_Expression
 
     def visit_Call(self, o):
-        return self.Retval(self._visit(o.children), [f for f in self.rule(o)])
+        return self.Retval(self._visit(o.children), self.rule(o))
 
 
 class FindNodes(Visitor):

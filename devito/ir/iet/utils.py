@@ -96,7 +96,7 @@ def derive_parameters(iet, drop_locals=False):
     """
     # Pick all free symbols and symbolic functions from the kernel
     functions = FindSymbols('symbolics').visit(iet)
-    free_symbols = FindSymbols('free-symbols').visit(iet)
+    free_symbols = FindSymbols('basics').visit(iet)  #TODO: THIS ONE SHOULD SUFFICE!
 
     # Filter out function base symbols and use real function objects
     function_names = set(flatten([(s.name, s._C_name) for s in functions]))

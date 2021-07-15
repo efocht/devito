@@ -124,20 +124,20 @@ class Node(Signer):
     def __str__(self):
         return str(self.ccode)
 
-    @abc.abstractproperty
+    @property
     def functions(self):
         """All AbstractFunction objects used by this node."""
-        raise NotImplementedError()
+        return ()
 
-    @abc.abstractproperty
-    def free_symbols(self):
-        """All Symbol objects used by this node."""
-        raise NotImplementedError()
+    @property
+    def basics(self):
+        """All Basic objects used by this node."""
+        return ()
 
-    @abc.abstractproperty
+    @property
     def defines(self):
-        """All Symbol objects defined by this node."""
-        raise NotImplementedError()
+        """All Basic objects defined by this node."""
+        return ()
 
     def _signature_items(self):
         return (str(self.ccode),)
@@ -193,18 +193,6 @@ class List(Node):
     def __repr__(self):
         return "<%s (%d, %d, %d)>" % (self.__class__.__name__, len(self.header),
                                       len(self.body), len(self.footer))
-
-    @property
-    def functions(self):
-        return ()
-
-    @property
-    def free_symbols(self):
-        return ()
-
-    @property
-    def defines(self):
-        return ()
 
 
 class Block(List):
@@ -273,6 +261,10 @@ class Call(ExprStmt, Node):
         return "%sCall::\n\t%s(...)" % (ret, self.name)
 
     @property
+    def children(self):
+        return tuple(i for i in self.arguments if isinstance(i, (Call, Lambda)))
+
+    @cached_property
     def functions(self):
         retval = []
         for i in self.arguments:
@@ -280,26 +272,23 @@ class Call(ExprStmt, Node):
                 continue
             elif isinstance(i, (AbstractFunction, Indexed, LocalObject)):
                 retval.append(i.function)
+            elif isinstance(i, Call):
+                retval.extend(i.functions)
             else:
                 for s in i.free_symbols:
-                    try:
-                        f = s.function
+                    try:  #TODO: try actually necessary??
+                        if isinstance(s.function, AbstractFunction):
+                            retval.append(s.function)
                     except AttributeError:
                         continue
-                    if isinstance(f, AbstractFunction):
-                        retval.append(f)
         if self.base is not None:
             retval.append(self.base.function)
         if self.retobj is not None:
             retval.append(self.retobj.function)
         return tuple(filter_ordered(retval))
 
-    @property
-    def children(self):
-        return tuple(i for i in self.arguments if isinstance(i, (Call, Lambda)))
-
     @cached_property
-    def free_symbols(self):
+    def basics(self):
         free = set()
         for i in self.arguments:
             if isinstance(i, numbers.Number):
@@ -311,6 +300,8 @@ class Call(ExprStmt, Node):
                     # Always passed by _C_name since what actually needs to be
                     # provided is the pointer to the corresponding C struct
                     free.add(i._C_symbol)
+            elif isinstance(i, Call):
+                free.update(i.basics)
             else:
                 free.update(i.free_symbols)
         if self.base is not None:
@@ -411,7 +402,7 @@ class Expression(ExprStmt, Node):
         return (self.write,) if self.is_definition else ()
 
     @property
-    def free_symbols(self):
+    def basics(self):
         return tuple(self.expr.free_symbols)
 
     @cached_property
@@ -596,12 +587,17 @@ class Iteration(Node):
         return _max - _min + 1
 
     @property
-    def functions(self):
-        """All Functions appearing in the Iteration header."""
-        return ()
+    def dimensions(self):
+        """All Dimensions appearing in the Iteration header."""
+        return tuple(self.dim._defines) + self.uindices
 
     @property
-    def free_symbols(self):
+    def write(self):
+        """All Functions written to in this Iteration"""
+        return []
+
+    @cached_property
+    def basics(self):
         """All Symbols appearing in the Iteration header."""
         return tuple(self.symbolic_min.free_symbols) \
             + tuple(self.symbolic_max.free_symbols) \
@@ -613,16 +609,6 @@ class Iteration(Node):
     def defines(self):
         """All Symbols defined in the Iteration header."""
         return self.dimensions
-
-    @property
-    def dimensions(self):
-        """All Dimensions appearing in the Iteration header."""
-        return tuple(self.dim._defines) + self.uindices
-
-    @property
-    def write(self):
-        """All Functions written to in this Iteration"""
-        return []
 
 
 class While(Node):
@@ -689,14 +675,6 @@ class Callable(Node):
     def functions(self):
         return tuple(i for i in self.parameters if isinstance(i, AbstractFunction))
 
-    @property
-    def free_symbols(self):
-        return ()
-
-    @property
-    def defines(self):
-        return ()
-
 
 class Conditional(Node):
 
@@ -740,12 +718,8 @@ class Conditional(Node):
         return tuple(ret)
 
     @property
-    def free_symbols(self):
+    def basics(self):
         return tuple(self.condition.free_symbols)
-
-    @property
-    def defines(self):
-        return ()
 
 
 # Second level IET nodes
@@ -792,10 +766,6 @@ class TimedList(List):
     def timer(self):
         return self._timer
 
-    @property
-    def free_symbols(self):
-        return ()
-
 
 class PointerCast(ExprStmt, Node):
 
@@ -830,21 +800,12 @@ class PointerCast(ExprStmt, Node):
         return (self.function,)
 
     @property
-    def free_symbols(self):
-        """
-        The symbols required by the PointerCast.
-
-        This may include DiscreteFunctions as well as Dimensions.
-        """
+    def basics(self):
         f = self.function
         if f.is_ArrayBasic:
             return tuple(flatten(s.free_symbols for s in f.symbolic_shape[1:]))
         else:
             return ()
-
-    @property
-    def defines(self):
-        return ()
 
 
 class Dereference(ExprStmt, Node):
@@ -873,7 +834,7 @@ class Dereference(ExprStmt, Node):
         return (self.pointee, self.pointer)
 
     @property
-    def free_symbols(self):
+    def basics(self):
         return ((self.pointee.indexed.label, self.pointer.indexed.label) +
                 (self.pointer.indexify(),) +
                 tuple(flatten(i.free_symbols for i in self.pointee.symbolic_shape[1:])) +
@@ -975,12 +936,8 @@ class Lambda(Node):
         return "Lambda[%s](%s)" % (self.captures, self.parameters)
 
     @cached_property
-    def free_symbols(self):
-        return set(self.parameters)
-
-    @property
-    def defines(self):
-        return ()
+    def basics(self):
+        return tuple(self.parameters)
 
 
 class Section(List):
@@ -1084,7 +1041,7 @@ class PragmaList(List):
         return self._functions
 
     @property
-    def free_symbols(self):
+    def basics(self):
         return self._free_symbols
 
 
@@ -1356,14 +1313,6 @@ class HaloSpot(Node):
     @property
     def functions(self):
         return tuple(self.fmapper)
-
-    @property
-    def free_symbols(self):
-        return ()
-
-    @property
-    def defines(self):
-        return ()
 
 
 # Utility classes
