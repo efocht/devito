@@ -2,7 +2,6 @@
 
 import abc
 import inspect
-import numbers
 from cached_property import cached_property
 from collections import OrderedDict, namedtuple
 from collections.abc import Iterable
@@ -268,15 +267,18 @@ class Call(ExprStmt, Node):
     def functions(self):
         retval = []
         for i in self.arguments:
-            if isinstance(i, numbers.Number):
-                continue
-            elif isinstance(i, (AbstractFunction, Indexed, LocalObject)):
+            if isinstance(i, (AbstractFunction, Indexed, LocalObject)):
                 retval.append(i.function)
             elif isinstance(i, Call):
                 retval.extend(i.functions)
             else:
-                for s in i.free_symbols:
-                    try:  #TODO: try actually necessary??
+                try:
+                    v = i.free_symbols
+                except AttributeError:
+                    continue
+                for s in v:
+                    try:
+                        # `try-except` necessary for e.g. Macro
                         if isinstance(s.function, AbstractFunction):
                             retval.append(s.function)
                     except AttributeError:
@@ -289,26 +291,22 @@ class Call(ExprStmt, Node):
 
     @cached_property
     def basics(self):
-        free = set()
+        retval = []
         for i in self.arguments:
-            if isinstance(i, numbers.Number):
-                continue
-            elif isinstance(i, AbstractFunction):
-                if i.is_ArrayBasic:
-                    free.add(i)
-                else:
-                    # Always passed by _C_name since what actually needs to be
-                    # provided is the pointer to the corresponding C struct
-                    free.add(i._C_symbol)
+            if isinstance(i, (Indexed, LocalObject)):
+                retval.append(i)
             elif isinstance(i, Call):
-                free.update(i.basics)
+                retval.extend(i.basics)
             else:
-                free.update(i.free_symbols)
+                try:
+                    retval.extend(i.free_symbols)
+                except AttributeError:
+                    continue
         if self.base is not None:
-            free.add(self.base)
+            retval.append(self.base)
         if self.retobj is not None:
-            free.update(self.retobj.free_symbols)
-        return free
+            retval.extend(self.retobj.free_symbols)
+        return tuple(filter_ordered(retval))
 
     @property
     def defines(self):
