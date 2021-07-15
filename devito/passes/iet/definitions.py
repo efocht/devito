@@ -176,7 +176,7 @@ class DataManager(object):
                 rbody.append(PragmaList(
                     flatten(i.pragmas for i in v.maps),
                     functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.basics for i in v.maps))
+                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
                 ))
                 rbody.append(BlankLine)
             rbody.extend(list(k.body))
@@ -185,7 +185,7 @@ class DataManager(object):
                 rbody.append(PragmaList(
                     flatten(i.pragmas for i in v.unmaps),
                     functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.basics for i in v.maps))
+                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
                 ))
 
             # frees/pfrees

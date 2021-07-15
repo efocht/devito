@@ -608,8 +608,8 @@ class FindSymbols(Visitor):
 
     rules = {
         'symbolics': lambda n: n.functions,
-        'basics': lambda n: [i for i in n.basics if isinstance(i, Basic)],
-        'indexeds': lambda n: [i for i in n.basics if i.is_Indexed],
+        'basics': lambda n: [i for i in n.expr_symbols if isinstance(i, Basic)],
+        'indexeds': lambda n: [i for i in n.expr_symbols if i.is_Indexed],
         'defines': lambda n: as_tuple(n.defines),
     }
 

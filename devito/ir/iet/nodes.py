@@ -129,8 +129,8 @@ class Node(Signer):
         return ()
 
     @property
-    def basics(self):
-        """All Basic objects used by this node."""
+    def expr_symbols(self):
+        """All symbols appearing in an expression within this node."""
         return ()
 
     @property
@@ -290,18 +290,20 @@ class Call(ExprStmt, Node):
         return tuple(filter_ordered(retval))
 
     @cached_property
-    def basics(self):
+    def expr_symbols(self):
         retval = []
         for i in self.arguments:
-            if isinstance(i, (Indexed, LocalObject)):
+            if isinstance(i, AbstractFunction):
+                continue
+            elif isinstance(i, (Indexed, LocalObject, Symbol)):
                 retval.append(i)
             elif isinstance(i, Call):
-                retval.extend(i.basics)
+                retval.extend(i.expr_symbols)
             else:
                 try:
                     retval.extend(i.free_symbols)
                 except AttributeError:
-                    continue
+                    pass
         if self.base is not None:
             retval.append(self.base)
         if self.retobj is not None:
@@ -400,7 +402,7 @@ class Expression(ExprStmt, Node):
         return (self.write,) if self.is_definition else ()
 
     @property
-    def basics(self):
+    def expr_symbols(self):
         return tuple(self.expr.free_symbols)
 
     @cached_property
@@ -595,8 +597,7 @@ class Iteration(Node):
         return []
 
     @cached_property
-    def basics(self):
-        """All Symbols appearing in the Iteration header."""
+    def expr_symbols(self):
         return tuple(self.symbolic_min.free_symbols) \
             + tuple(self.symbolic_max.free_symbols) \
             + self.uindices \
@@ -605,7 +606,6 @@ class Iteration(Node):
 
     @property
     def defines(self):
-        """All Symbols defined in the Iteration header."""
         return self.dimensions
 
 
@@ -716,7 +716,7 @@ class Conditional(Node):
         return tuple(ret)
 
     @property
-    def basics(self):
+    def expr_symbols(self):
         return tuple(self.condition.free_symbols)
 
 
@@ -798,7 +798,7 @@ class PointerCast(ExprStmt, Node):
         return (self.function,)
 
     @property
-    def basics(self):
+    def expr_symbols(self):
         f = self.function
         if f.is_ArrayBasic:
             return tuple(flatten(s.free_symbols for s in f.symbolic_shape[1:]))
@@ -832,7 +832,7 @@ class Dereference(ExprStmt, Node):
         return (self.pointee, self.pointer)
 
     @property
-    def basics(self):
+    def expr_symbols(self):
         return ((self.pointee.indexed.label, self.pointer.indexed.label) +
                 (self.pointer.indexify(),) +
                 tuple(flatten(i.free_symbols for i in self.pointee.symbolic_shape[1:])) +
@@ -934,7 +934,7 @@ class Lambda(Node):
         return "Lambda[%s](%s)" % (self.captures, self.parameters)
 
     @cached_property
-    def basics(self):
+    def expr_symbols(self):
         return tuple(self.parameters)
 
 
@@ -1039,7 +1039,7 @@ class PragmaList(List):
         return self._functions
 
     @property
-    def basics(self):
+    def expr_symbols(self):
         return self._free_symbols
 
 
