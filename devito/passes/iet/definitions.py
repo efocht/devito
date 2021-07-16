@@ -9,8 +9,9 @@ from operator import itemgetter
 
 import cgen as c
 
-from devito.ir import (BlankLine, Dereference, EntryFunction, List, LocalExpression,
-                       PragmaList, FindNodes, FindSymbols, MapExprStmts, Transformer)
+from devito.ir import (BlankLine, CallableBody, Dereference, EntryFunction, List,
+                       LocalExpression, PragmaList, FindNodes, FindSymbols,
+                       MapExprStmts, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
@@ -50,10 +51,6 @@ class Storage(OrderedDict):
 
         self[k] = v
         self.defined.add(key)
-
-
-class Defs(List):
-    pass
 
 
 class DataManager(object):
@@ -152,7 +149,7 @@ class DataManager(object):
         else:
             storage.update(obj, site, allocs=(decl, alloc0, alloc1), frees=(free0, free1))
 
-    def _dump_storage(self, iet, storage, cls=List):
+    def _dump_definitions(self, iet, storage):
         mapper = {}
         for k, v in storage.items():
             # Expr -> LocalExpr ?
@@ -167,26 +164,6 @@ class DataManager(object):
                 init = c.Initializer(c.Value(tid._C_typedata, tid.name),
                                      self.lang['thread-num'])
                 allocs.append(c.Module((header, c.Block([init] + body))))
-            if allocs:
-                allocs.append(c.Line())
-
-            # maps/unmaps
-            rbody = []
-            if v.maps:
-                rbody.append(PragmaList(
-                    flatten(i.pragmas for i in v.maps),
-                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
-                ))
-                rbody.append(BlankLine)
-            rbody.extend(list(k.body))
-            if v.unmaps:
-                rbody.append(BlankLine)
-                rbody.append(PragmaList(
-                    flatten(i.pragmas for i in v.unmaps),
-                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
-                ))
 
             # frees/pfrees
             frees = []
@@ -196,11 +173,13 @@ class DataManager(object):
                                      self.lang['thread-num'])
                 frees.append(c.Module((header, c.Block([init] + body))))
             frees.extend(flatten(v.frees))
-            if frees:
-                frees.insert(0, c.Line())
 
-            mapper[k] = k._rebuild(body=cls(header=allocs, body=rbody, footer=frees),
-                                   **k.args_frozen)
+            if k is iet:
+                assert k.body.is_CallableBody
+                mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
+            else:
+                mapper[k] = k._rebuild(body=List(header=allocs, footer=frees),
+                                       **k.args_frozen)  #TODO: is args_frozen necessary??
 
         processed = Transformer(mapper, nested=True).visit(iet)
 
@@ -276,7 +255,18 @@ class DataManager(object):
                     # E.g., a generic SymPy expression
                     pass
 
-        iet = self._dump_storage(iet, storage, Defs)
+        iet = self._dump_definitions(iet, storage)
+
+        return iet, {}
+
+    @iet_pass
+    def prepare_C_iet(self, iet):
+        """
+        Plug a CallableBody node as immediate child of Callable in preparation
+        for the subsequent passes, which further bring the IET close to
+        compilable C code.
+        """
+        iet = iet._rebuild(body=CallableBody(body=iet.body))
 
         return iet, {}
 
@@ -299,11 +289,6 @@ class DataManager(object):
         iet : Callable
             The input Iteration/Expression tree.
         """
-        body = iet.body[0]
-        if not isinstance(body, Defs):
-            # Sometimes we end up here -- an IET with no definitions
-            body = iet
-
         indexeds = FindSymbols('indexeds').visit(iet)
         defines = set(FindSymbols('defines').visit(iet))
 
@@ -318,27 +303,18 @@ class DataManager(object):
         # Create Function -> n-dimensional array casts
         # E.g. `float (*u)[u_vec->size[1]] = (float (*)[u_vec->size[1]]) u_vec->data`
         functions = sorted({i.function for i in iindexeds}, key=lambda i: i.name)
-        casts = tuple(self.lang.PointerCast(f) for f in functions if needs_cast(f))
-        if casts:
-            casts = (List(body=casts, footer=c.Line()),)
-            body = body._rebuild(body=casts + body.body)
+        casts = [self.lang.PointerCast(f) for f in functions if needs_cast(f)]
 
         # Create Function -> linearized n-dimensional array casts
         # E.g. `float *ul = (float*) u_vec->data`
-        casts = []
         for i in findexeds:
             if needs_cast(i.function):
                 defines.add(i.function)
                 casts.append(self.lang.PointerCast(i.function, flat=i.name))
-        if casts:
-            casts = (List(body=casts, footer=c.Line()),)
-            body = body._rebuild(body=casts + body.body)
 
         # Incorporate the newly created casts
-        if isinstance(body, Defs):
-            iet = iet._rebuild(body=body)
-        else:
-            iet = body
+        if casts:
+            iet = iet._rebuild(body=iet.body._rebuild(casts=casts))
 
         return iet, {}
 
@@ -346,6 +322,7 @@ class DataManager(object):
         """
         Apply the `map_on_memspace`, `place_definitions` and `place_casts` passes.
         """
+        self.prepare_C_iet(graph)
         self.map_onmemspace(graph)
         self.place_definitions(graph)
         self.place_casts(graph)
@@ -396,6 +373,33 @@ class DeviceAwareDataManager(DataManager):
 
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
+    def _dump_transfers(self, iet, storage):
+        assert iet.body.is_CallableBody
+
+        mapper = {}
+        for k, v in storage.items():
+            if v.maps:
+                maps = PragmaList(
+                    flatten(i.pragmas for i in v.maps),
+                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
+                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
+                )
+            else:
+                maps = None
+            if v.unmaps:
+                unmaps = PragmaList(
+                    flatten(i.pragmas for i in v.unmaps),
+                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
+                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
+                )
+            else:
+                unmaps = None
+            mapper[iet.body] = iet.body._rebuild(maps=maps, unmaps=unmaps)
+
+        processed = Transformer(mapper, nested=True).visit(iet)
+
+        return processed
+
     @iet_pass
     def map_onmemspace(self, iet, **kwargs):
 
@@ -431,7 +435,8 @@ class DeviceAwareDataManager(DataManager):
                 if is_on_device(i, self.gpu_fit):
                     self._map_function_on_high_bw_mem(iet, i, storage, devicerm, True)
 
-            iet = self._dump_storage(iet, storage)
+            iet = self._dump_definitions(iet, storage)
+            iet = self._dump_transfers(iet, storage)
 
             return iet, {'args': devicerm}
 

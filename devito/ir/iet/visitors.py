@@ -198,6 +198,9 @@ class CGen(Visitor):
                 ret.append(ccode(i))
         return ret
 
+    def visit_Generable(self, o):
+        return o
+
     def visit_PointerCast(self, o):
         f = o.function
         if isinstance(o.obj, VoidPointer):
@@ -365,6 +368,23 @@ class CGen(Visitor):
         decls = self._args_decl(o.parameters)
         signature = c.FunctionDeclaration(c.Value(o.retval, o.name), decls)
         return c.FunctionBody(signature, c.Block(body))
+
+    def visit_CallableBody(self, o):
+        body = []
+        prev = None
+        for i in [o.init, o.unpacks, o.allocs, o.casts, o.maps,  # pre
+                  o.body,  # actual body
+                  o.unmaps, o.frees]:  # post
+            if i in o.children:
+                v = self.visit(i)
+            else:
+                v = i
+            if v:
+                if prev:
+                    body.append(c.Line())
+                prev = v
+                body.extend(as_tuple(v))
+        return c.Collection(body)
 
     def visit_Lambda(self, o):
         body = flatten(self._visit(i) for i in o.children)

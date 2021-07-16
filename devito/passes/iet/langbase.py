@@ -221,6 +221,8 @@ class DeviceAwareMixin(object):
 
         @_initialize.register(EntryFunction)
         def _(iet):
+            assert iet.body.is_CallableBody
+
             # TODO: we need to pick the rank from `comm_shm`, not `comm`,
             # so that we have nranks == ngpus (as long as the user has launched
             # the right number of MPI processes per node given the available
@@ -270,13 +272,16 @@ class DeviceAwareMixin(object):
                 header = c.Comment('Begin of %s setup' % self.lang['name'])
                 footer = c.Comment('End of %s setup' % self.lang['name'])
 
-            init = List(header=header, body=body, footer=(footer, c.Line()))
-            iet = iet._rebuild(body=(init,) + iet.body)
+            init = List(header=header, body=body, footer=footer)
+            iet = iet._rebuild(body=iet.body._rebuild(init=init))
 
             return iet, {'args': deviceid}
 
         @_initialize.register(ThreadFunction)
         def _(iet):
+            #TODO: JUST USE INIT...
+            from IPython import embed; embed()
+
             body = FindNodes(WhileAlive).visit(iet)
             assert len(body) == 1
             body = body.pop()

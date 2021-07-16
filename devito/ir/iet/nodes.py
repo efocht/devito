@@ -23,7 +23,7 @@ __all__ = ['Node', 'Block', 'Expression', 'Element', 'Callable', 'Call', 'Condit
            'ExpressionBundle', 'AugmentedExpression', 'Increment', 'Return', 'While',
            'ParallelIteration', 'ParallelBlock', 'Dereference', 'Lambda', 'SyncSpot',
            'PragmaList', 'DummyExpr', 'BlankLine', 'ParallelTree', 'BusyWait',
-           'WhileAlive']
+           'WhileAlive', 'CallableBody']
 
 # First-class IET nodes
 
@@ -42,6 +42,7 @@ class Node(Signer):
     is_ForeignExpression = False
     is_LocalExpression = False
     is_Callable = False
+    is_CallableBody = False
     is_Lambda = False
     is_ElementalFunction = False
     is_Call = False
@@ -660,7 +661,10 @@ class Callable(Node):
 
     def __init__(self, name, body, retval, parameters=None, prefix=('static', 'inline')):
         self.name = name
-        self.body = as_tuple(body)
+        if isinstance(body, CallableBody):
+            self.body = body
+        else:
+            self.body = as_tuple(body)  #TODO: really necessary? nah...can fix stuff
         self.retval = retval
         self.prefix = as_tuple(prefix)
         self.parameters = as_tuple(parameters)
@@ -672,6 +676,52 @@ class Callable(Node):
     @property
     def functions(self):
         return tuple(i for i in self.parameters if isinstance(i, AbstractFunction))
+
+
+class CallableBody(Node):
+
+    """
+    The immediate child of a Callable.
+
+    Parameters
+    ----------
+    body : Node or list of Node
+        The actual body.
+    init : Node, optional
+        A piece of IET to perform some initialization relevant for `body`
+        (e.g., to initialize the target language runtime).
+    unpacks : iterable of Nodes, optional
+        Statements unpacking data from composite types.
+    allocs : iterable of cgen objects, optional
+        Data allocations for `body`.
+    casts : iterable of PointerCasts, optional
+        Sequence of PointerCasts required by the `body`.
+    maps : PragmaList, optional
+        Data maps for `body` (a data map may e.g. trigger a data transfer from
+        host to device).
+    unmaps : PragmaList, optional
+        Data unmaps for `body`.
+    frees : iterable of cgen objects, optional
+        Data deallocations for `body`.
+    """
+
+    is_CallableBody = True
+
+    _traversable = ['init', 'unpacks', 'casts', 'maps', 'body', 'unmaps']
+
+    def __init__(self, body, init=None, unpacks=None, allocs=None, casts=None,
+                 maps=None, unmaps=None, frees=None):
+        self.body = as_tuple(body)
+        self.init = as_tuple(init)
+        self.unpacks = as_tuple(unpacks)
+        self.allocs = as_tuple(allocs)
+        self.casts = as_tuple(casts)
+        self.maps = as_tuple(maps)
+        self.unmaps = as_tuple(unmaps)
+        self.frees = as_tuple(frees)
+
+    def __repr__(self):
+        return "<CallableBody>"
 
 
 class Conditional(Node):
@@ -768,7 +818,8 @@ class TimedList(List):
 class PointerCast(ExprStmt, Node):
 
     """
-    A node encapsulating a cast of a raw C pointer to a multi-dimensional array.
+    A node encapsulating a cast of a raw void pointer to a non-void,
+    potentially multi-dimensional array.
     """
 
     is_PointerCast = True
