@@ -178,8 +178,7 @@ class DataManager(object):
                 assert k.body.is_CallableBody
                 mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
             else:
-                mapper[k] = k._rebuild(body=List(header=allocs, footer=frees),
-                                       **k.args_frozen)  #TODO: is args_frozen necessary??
+                mapper[k] = k._rebuild(body=List(header=allocs, footer=frees))
 
         processed = Transformer(mapper, nested=True).visit(iet)
 
