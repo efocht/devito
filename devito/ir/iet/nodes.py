@@ -23,7 +23,7 @@ __all__ = ['Node', 'Block', 'Expression', 'Element', 'Callable', 'Call', 'Condit
            'ExpressionBundle', 'AugmentedExpression', 'Increment', 'Return', 'While',
            'ParallelIteration', 'ParallelBlock', 'Dereference', 'Lambda', 'SyncSpot',
            'PragmaList', 'DummyExpr', 'BlankLine', 'ParallelTree', 'BusyWait',
-           'WhileAlive', 'CallableBody']
+           'CallableBody']
 
 # First-class IET nodes
 
@@ -859,6 +859,10 @@ class PointerCast(ExprStmt, Node):
         else:
             return ()
 
+    @property
+    def defines(self):
+        return (self.function,)
+
 
 class Dereference(ExprStmt, Node):
 
@@ -866,7 +870,7 @@ class Dereference(ExprStmt, Node):
     A node encapsulating a dereference from a `pointer` to a `pointee`.
     The following cases are supported:
 
-        * `pointer` is a PointerArray and `pointee` is an Array (typical case).
+        * `pointer` is a PointerArray and `pointee` is an Array.
         * `pointer` is an ArrayObject representing a pointer to a C struct while
           `pointee` is a field in `pointer`.
     """
@@ -1256,15 +1260,6 @@ class BusyWait(While):
 
     """
     A while-loop implementing a busy waiting.
-    """
-
-    pass
-
-
-class WhileAlive(While):
-
-    """
-    A while-loop used by threads to repeat the same actions until they're killed.
     """
 
     pass

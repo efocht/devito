@@ -315,7 +315,8 @@ class Orchestrator(object):
         # Add initialization and finalization code
         init = List(body=pieces.init, footer=c.Line())
         finalize = List(header=c.Line(), body=pieces.finalize)
-        iet = iet._rebuild(body=(init,) + iet.body + (finalize,))
+        body = iet.body._rebuild(body=(init,) + iet.body.body + (finalize,))
+        iet = iet._rebuild(body=body)
 
         return iet, {
             'efuncs': pieces.funcs,

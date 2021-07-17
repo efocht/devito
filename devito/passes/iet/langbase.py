@@ -5,8 +5,7 @@ import cgen as c
 
 from devito.ir import (BlankLine, DummyEq, Call, Conditional, FindNodes, List,
                        LocalExpression, Prodder, ParallelIteration, ParallelBlock,
-                       PointerCast, WhileAlive, EntryFunction, ThreadFunction,
-                       Transformer)
+                       PointerCast, EntryFunction, ThreadFunction, Transformer)
 from devito.mpi.distributed import MPICommObject
 from devito.passes.iet.engine import iet_pass
 from devito.symbolics import Byref, CondNe
@@ -279,13 +278,6 @@ class DeviceAwareMixin(object):
 
         @_initialize.register(ThreadFunction)
         def _(iet):
-            #TODO: JUST USE INIT...
-            from IPython import embed; embed()
-
-            body = FindNodes(WhileAlive).visit(iet)
-            assert len(body) == 1
-            body = body.pop()
-
             devicetype = as_list(self.lang[self.platform])
             deviceid = self.deviceid
 
@@ -293,9 +285,8 @@ class DeviceAwareMixin(object):
                 CondNe(deviceid, -1),
                 self.lang['set-device']([deviceid] + devicetype)
             )
-
-            mapper = {body: List(body=[init, BlankLine, body])}
-            iet = Transformer(mapper).visit(iet)
+            body = iet.body._rebuild(body=(init, BlankLine) + iet.body.body)
+            iet = iet._rebuild(body=body)
 
             return iet, {}
 

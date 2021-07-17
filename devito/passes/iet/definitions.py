@@ -174,6 +174,7 @@ class DataManager(object):
             frees.extend(flatten(v.frees))
 
             if k is iet:
+                from IPython import embed; embed()
                 mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
             else:
                 mapper[k] = k._rebuild(body=List(header=allocs, footer=frees))
