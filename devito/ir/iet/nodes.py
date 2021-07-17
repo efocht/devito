@@ -661,10 +661,10 @@ class Callable(Node):
 
     def __init__(self, name, body, retval, parameters=None, prefix=('static', 'inline')):
         self.name = name
-        if isinstance(body, CallableBody):
-            self.body = body
+        if not isinstance(body, CallableBody):
+            self.body = CallableBody(body)
         else:
-            self.body = as_tuple(body)  #TODO: really necessary? nah...can fix stuff
+            self.body = body
         self.retval = retval
         self.prefix = as_tuple(prefix)
         self.parameters = as_tuple(parameters)
@@ -711,6 +711,9 @@ class CallableBody(Node):
 
     def __init__(self, body, init=None, unpacks=None, allocs=None, casts=None,
                  maps=None, unmaps=None, frees=None):
+        # Sanity check
+        assert not isinstance(body, CallableBody), "CallableBody's cannot be nested"
+
         self.body = as_tuple(body)
         self.init = as_tuple(init)
         self.unpacks = as_tuple(unpacks)

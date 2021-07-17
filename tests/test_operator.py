@@ -1329,7 +1329,7 @@ class TestDeclarator(object):
         iet = Conditional(x < 3, list_initialize, list_initialize)
         iet = Callable('test', iet, 'void')
         iet = DataManager.place_definitions.__wrapped__(DataManager(None, None), iet)[0]
-        for i in iet.body[0].children:
+        for i in iet.body.body[0].children:
             assert len(i) == 1
             assert i[0].is_Expression
             assert i[0].expr.rhs is init_value

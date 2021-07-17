@@ -9,9 +9,8 @@ from operator import itemgetter
 
 import cgen as c
 
-from devito.ir import (BlankLine, CallableBody, Dereference, EntryFunction, List,
-                       LocalExpression, PragmaList, FindNodes, FindSymbols,
-                       MapExprStmts, Transformer)
+from devito.ir import (BlankLine, Dereference, EntryFunction, List, LocalExpression,
+                       PragmaList, FindNodes, FindSymbols, MapExprStmts, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
@@ -175,7 +174,6 @@ class DataManager(object):
             frees.extend(flatten(v.frees))
 
             if k is iet:
-                assert k.body.is_CallableBody
                 mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
             else:
                 mapper[k] = k._rebuild(body=List(header=allocs, footer=frees))
@@ -259,17 +257,6 @@ class DataManager(object):
         return iet, {}
 
     @iet_pass
-    def prepare_C_iet(self, iet):
-        """
-        Plug a CallableBody node as immediate child of Callable in preparation
-        for the subsequent passes, which further bring the IET close to
-        compilable C code.
-        """
-        iet = iet._rebuild(body=CallableBody(body=iet.body))
-
-        return iet, {}
-
-    @iet_pass
     def map_onmemspace(self, iet, **kwargs):
         """
         Create a new IET where certain symbols have been mapped to one or more
@@ -321,7 +308,6 @@ class DataManager(object):
         """
         Apply the `map_on_memspace`, `place_definitions` and `place_casts` passes.
         """
-        self.prepare_C_iet(graph)
         self.map_onmemspace(graph)
         self.place_definitions(graph)
         self.place_casts(graph)
@@ -373,8 +359,6 @@ class DeviceAwareDataManager(DataManager):
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
     def _dump_transfers(self, iet, storage):
-        assert iet.body.is_CallableBody
-
         mapper = {}
         for k, v in storage.items():
             if v.maps:
