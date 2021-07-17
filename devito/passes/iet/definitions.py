@@ -3,7 +3,7 @@ Collection of passes for the declaration, allocation, movement and deallocation
 of symbols and data.
 """
 
-from collections import OrderedDict, namedtuple
+from collections import OrderedDict, defaultdict, namedtuple
 from functools import singledispatch
 from operator import itemgetter
 
@@ -28,10 +28,14 @@ class Storage(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         super(Storage, self).__init__(*args, **kwargs)
-        self.defined = set()
+        self.defined = defaultdict(set)
+
+    @property
+    def alldefined(self):
+        return set().union(*self.defined.values())
 
     def update(self, key, site, **kwargs):
-        if key in self.defined:
+        if key in self.alldefined:
             return
 
         try:
@@ -42,14 +46,14 @@ class Storage(OrderedDict):
         for k, v in kwargs.items():
             getattr(metasite, k).append(v)
 
-        self.defined.add(key)
+        self.defined[site].add(key)
 
     def map(self, key, k, v):
-        if key in self.defined:
+        if key in self.alldefined:
             return
 
         self[k] = v
-        self.defined.add(key)
+        self.defined[k].add(key)
 
 
 class DataManager(object):
@@ -174,8 +178,8 @@ class DataManager(object):
             frees.extend(flatten(v.frees))
 
             if k is iet:
-                from IPython import embed; embed()
-                mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
+                mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees,
+                                                 alloc_defines=storage.defined[k])
             else:
                 mapper[k] = k._rebuild(body=List(header=allocs, footer=frees))
 

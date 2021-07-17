@@ -703,6 +703,8 @@ class CallableBody(Node):
         Data unmaps for `body`.
     frees : iterable of cgen objects, optional
         Data deallocations for `body`.
+    alloc_defines : iterable of Basics
+        Objects defined in the CallableBody through `allocs`.
     """
 
     is_CallableBody = True
@@ -710,7 +712,7 @@ class CallableBody(Node):
     _traversable = ['init', 'unpacks', 'casts', 'maps', 'body', 'unmaps']
 
     def __init__(self, body, init=None, unpacks=None, allocs=None, casts=None,
-                 maps=None, unmaps=None, frees=None):
+                 maps=None, unmaps=None, frees=None, alloc_defines=None):
         # Sanity check
         assert not isinstance(body, CallableBody), "CallableBody's cannot be nested"
 
@@ -722,9 +724,14 @@ class CallableBody(Node):
         self.maps = as_tuple(maps)
         self.unmaps = as_tuple(unmaps)
         self.frees = as_tuple(frees)
+        self.alloc_defines = as_tuple(alloc_defines)
 
     def __repr__(self):
         return "<CallableBody>"
+
+    @property
+    def defines(self):
+        return self.alloc_defines
 
 
 class Conditional(Node):

@@ -662,6 +662,9 @@ class FindSymbols(Visitor):
     def visit_Call(self, o):
         return self.Retval(self._visit(o.children), self.rule(o))
 
+    def visit_CallableBody(self, o):
+        return self.Retval(self._visit(o.children), self.rule(o), node=o)
+
 
 class FindNodes(Visitor):
 
