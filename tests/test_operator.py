@@ -1247,7 +1247,7 @@ class TestDeclarator(object):
                                           'sizeof(float[i_size]));')
         assert str(op.body.allocs[2]) == 'float *c_vec;'
         assert str(op.body.allocs[3]) == ('posix_memalign((void**)&c_vec, 64, '
-                                             'sizeof(float[i_size][j_size]));')
+                                          'sizeof(float[i_size][j_size]));')
         assert str(op.body.frees[0]) == 'free(a_vec);'
         assert str(op.body.frees[1]) == 'free(c_vec);'
 
@@ -1262,21 +1262,19 @@ class TestDeclarator(object):
                        Eq(c[i, j], c[i, j]*a[i]),
                        Eq(f[j, k], a[j] + c[j, k])])
 
-        assert op.body[0].body[0].body[0].is_PointerCast
-        assert str(op.body[0].body[0].body[2]) ==\
+        assert op.body.casts[2].is_PointerCast
+        assert str(op.body.casts[2]) ==\
             ('float (*restrict f)[f_vec->size[1]] __attribute__ '
              '((aligned (64))) = (float (*)[f_vec->size[1]]) f_vec->data;')
 
-        assert op.body[0].is_List
-        assert str(op.body[0].header[0]) == 'float *a_vec;'
-        assert str(op.body[0].header[1]) == ('posix_memalign((void**)&a_vec, 64, '
-                                             'sizeof(float[i_size]));')
-        assert str(op.body[0].header[2]) == 'float *c_vec;'
-        assert str(op.body[0].header[3]) == ('posix_memalign((void**)&c_vec, 64, '
-                                             'sizeof(float[i_size][j_size]));')
-        assert str(op.body[0].footer[0]) == ''
-        assert str(op.body[0].footer[1]) == 'free(a_vec);'
-        assert str(op.body[0].footer[2]) == 'free(c_vec);'
+        assert str(op.body.allocs[0]) == 'float *a_vec;'
+        assert str(op.body.allocs[1]) == ('posix_memalign((void**)&a_vec, 64, '
+                                          'sizeof(float[i_size]));')
+        assert str(op.body.allocs[2]) == 'float *c_vec;'
+        assert str(op.body.allocs[3]) == ('posix_memalign((void**)&c_vec, 64, '
+                                          'sizeof(float[i_size][j_size]));')
+        assert str(op.body.frees[0]) == 'free(a_vec);'
+        assert str(op.body.frees[1]) == 'free(c_vec);'
 
     def test_stack_scalars(self):
         i, j = dimensions('i j')
@@ -1291,21 +1289,19 @@ class TestDeclarator(object):
                        Eq(a[i], t0*t1*3.),
                        Eq(f, a[j])])
 
-        assert op.body[0].body[0].body[1].is_PointerCast
-        assert str(op.body[0].body[0].body[1]) ==\
+        assert op.body.casts[1].is_PointerCast
+        assert str(op.body.casts[1]) ==\
             ('float (*restrict f) __attribute__ '
              '((aligned (64))) = (float (*)) f_vec->data;')
 
-        assert op.body[0].is_List
-        assert str(op.body[0].header[0]) == 'float *a_vec;'
-        assert str(op.body[0].header[1]) == ('posix_memalign((void**)&a_vec, 64, '
-                                             'sizeof(float[i_size]));')
-        assert str(op.body[0].footer[0]) == ''
-        assert str(op.body[0].footer[1]) == 'free(a_vec);'
+        assert str(op.body.allocs[0]) == 'float *a_vec;'
+        assert str(op.body.allocs[1]) == ('posix_memalign((void**)&a_vec, 64, '
+                                          'sizeof(float[i_size]));')
+        assert str(op.body.frees[0]) == 'free(a_vec);'
 
-        assert op.body[0].body[2].body[0].is_ExpressionBundle
-        assert str(op.body[0].body[2].body[0].body[0]) == 'float t0 = 1.00000000000000F;'
-        assert str(op.body[0].body[2].body[0].body[1]) == 'float t1 = 2.00000000000000F;'
+        assert op.body.body[1].body[0].is_ExpressionBundle
+        assert str(op.body.body[1].body[0].body[0]) == 'float t0 = 1.00000000000000F;'
+        assert str(op.body.body[1].body[0].body[1]) == 'float t1 = 2.00000000000000F;'
 
     def test_stack_arrays(self):
         i, j, k, s, q = dimensions('i j k s q')
@@ -1317,12 +1313,12 @@ class TestDeclarator(object):
         op = Operator([Eq(c[i, j], e[k, s, q, i, j]*1.),
                        Eq(f, c[s, q])])
 
-        assert op.body[0].body[0].body[2].is_PointerCast
-        assert str(op.body[0].body[0].body[2]) ==\
+        assert op.body.casts[2].is_PointerCast
+        assert str(op.body.casts[2]) ==\
             ('float (*restrict f)[f_vec->size[1]] __attribute__ '
              '((aligned (64))) = (float (*)[f_vec->size[1]]) f_vec->data;')
 
-        assert str(op.body[0].header[0]) ==\
+        assert str(op.body.allocs[0]) ==\
             'float c[i_size][j_size] __attribute__((aligned(64)));'
 
     def test_conditional_declarations(self):
