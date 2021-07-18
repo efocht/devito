@@ -28,10 +28,10 @@ class Storage(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         super(Storage, self).__init__(*args, **kwargs)
-        self.defined = defaultdict(set)
+        self.defined = defaultdict(set)  #TODO: MAKE IT AGAIN JUST A SET?
 
     @property
-    def alldefined(self):
+    def alldefined(self):  #TODO: DROP?
         return set().union(*self.defined.values())
 
     def update(self, key, site, **kwargs):
@@ -178,8 +178,7 @@ class DataManager(object):
             frees.extend(flatten(v.frees))
 
             if k is iet:
-                mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees,
-                                                 alloc_defines=storage.defined[k])
+                mapper[k.body] = k.body._rebuild(allocs=allocs, frees=frees)
             else:
                 mapper[k] = k._rebuild(body=List(header=allocs, footer=frees))
 
