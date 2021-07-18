@@ -8,7 +8,6 @@ from devito.ir.iet.nodes import (BlankLine, Call, Callable, Conditional, Derefer
                                  DummyExpr, Iteration, List, PointerCast, Return, While,
                                  CallableBody)
 from devito.ir.iet.utils import derive_parameters, diff_parameters
-from devito.ir.iet.visitors import FindSymbols
 from devito.symbolics import CondEq, CondNe, FieldFromComposite, FieldFromPointer, Macro
 from devito.tools import as_tuple
 from devito.types import PThreadArray, SharedData, Symbol, VoidPointer

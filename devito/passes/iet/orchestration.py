@@ -2,16 +2,14 @@ from collections import namedtuple
 
 import cgen as c
 from sympy import Or
-import numpy as np
 
 from devito.data import FULL
-from devito.ir.equations import DummyEq
 from devito.ir.iet import (Call, Callable, Conditional, List, SyncSpot, FindNodes,
-                           LocalExpression, Transformer, BlankLine, BusyWait, PragmaList,
+                           Transformer, BlankLine, BusyWait, PragmaList,
                            DummyExpr, derive_parameters, make_thread_ctx)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
-from devito.symbolics import CondEq, CondNe, FieldFromComposite, ListInitializer
+from devito.symbolics import CondEq, CondNe, FieldFromComposite
 from devito.tools import (as_mapper, as_list, filter_ordered, filter_sorted,
                           flatten, is_integer)
 from devito.types import (WaitLock, WithLock, FetchUpdate, FetchPrefetch,
@@ -78,11 +76,6 @@ class Orchestrator(object):
 
         # Schedule computation to the first available thread
         iet = tctx.activate
-
-        # Initialize the locks
-        for i in locks:
-            values = np.full(i.shape, 2, dtype=np.int32).tolist()
-            pieces.init.append(LocalExpression(DummyEq(i, ListInitializer(values))))
 
         # Fire up the threads
         pieces.init.append(tctx.init)

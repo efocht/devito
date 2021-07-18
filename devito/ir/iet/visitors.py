@@ -14,7 +14,7 @@ from devito.ir.iet.nodes import Node, Iteration, Expression, Call, Lambda
 from devito.ir.support.space import Backward
 from devito.symbolics import ccode
 from devito.tools import GenericVisitor, as_tuple, filter_sorted, flatten
-from devito.types.basic import AbstractFunction, Basic
+from devito.types.basic import Basic
 from devito.types import ArrayObject, VoidPointer
 
 

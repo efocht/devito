@@ -3,9 +3,9 @@ from abc import ABC
 
 import cgen as c
 
-from devito.ir import (BlankLine, DummyEq, Call, Conditional, FindNodes, List,
-                       LocalExpression, Prodder, ParallelIteration, ParallelBlock,
-                       PointerCast, EntryFunction, ThreadFunction, Transformer)
+from devito.ir import (BlankLine, DummyEq, Call, Conditional, List, LocalExpression,
+                       Prodder, ParallelIteration, ParallelBlock, PointerCast,
+                       EntryFunction, ThreadFunction)
 from devito.mpi.distributed import MPICommObject
 from devito.passes.iet.engine import iet_pass
 from devito.symbolics import Byref, CondNe

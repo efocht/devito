@@ -3,18 +3,18 @@ Collection of passes for the declaration, allocation, movement and deallocation
 of symbols and data.
 """
 
-from collections import OrderedDict, defaultdict, namedtuple
+from collections import OrderedDict, namedtuple
 from functools import singledispatch
 from operator import itemgetter
 
 import cgen as c
 
-from devito.ir import (BlankLine, Dereference, EntryFunction, List, LocalExpression,
-                       PragmaList, FindNodes, FindSymbols, MapExprStmts, Transformer)
+from devito.ir import (EntryFunction, List, LocalExpression, PragmaList,
+                       FindSymbols, MapExprStmts, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
-from devito.symbolics import ccode
+from devito.symbolics import ListInitializer, ccode
 from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten, split
 from devito.types import DeviceRM, FIndexed
 
@@ -28,14 +28,10 @@ class Storage(OrderedDict):
 
     def __init__(self, *args, **kwargs):
         super(Storage, self).__init__(*args, **kwargs)
-        self.defined = defaultdict(set)  #TODO: MAKE IT AGAIN JUST A SET?
-
-    @property
-    def alldefined(self):  #TODO: DROP?
-        return set().union(*self.defined.values())
+        self.defined = set()
 
     def update(self, key, site, **kwargs):
-        if key in self.alldefined:
+        if key in self.defined:
             return
 
         try:
@@ -46,14 +42,14 @@ class Storage(OrderedDict):
         for k, v in kwargs.items():
             getattr(metasite, k).append(v)
 
-        self.defined[site].add(key)
+        self.defined.add(key)
 
     def map(self, key, k, v):
-        if key in self.alldefined:
+        if key in self.defined:
             return
 
         self[k] = v
-        self.defined[k].add(key)
+        self.defined.add(key)
 
 
 class DataManager(object):
@@ -85,9 +81,13 @@ class DataManager(object):
         """
         shape = "".join("[%s]" % ccode(i) for i in obj.symbolic_shape)
         alignment = self.lang['aligned'](obj._data_alignment)
-        value = "%s%s %s" % (obj.name, shape, alignment)
+        decl = c.Value(obj._C_typedata, "%s%s %s" % (obj._C_name, shape, alignment))
 
-        storage.update(obj, site, allocs=c.POD(obj.dtype, value))
+        if obj.initvalue:
+            storage.update(obj, site,
+                           allocs=c.Initializer(decl, ListInitializer(obj.initvalue)))
+        else:
+            storage.update(obj, site, allocs=decl)
 
     def _alloc_scalar_on_low_lat_mem(self, site, expr, storage):
         """
