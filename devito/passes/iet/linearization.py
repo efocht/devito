@@ -3,8 +3,8 @@ from collections import defaultdict
 import numpy as np
 
 from devito.data import FULL
-from devito.ir import (BlankLine, DummyEq, Expression, LocalExpression, FindNodes,
-                       FindSymbols, Transformer)
+from devito.ir import (BlankLine, DummyEq, Dereference, Expression, LocalExpression,
+                       PointerCast, FindNodes, FindSymbols, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.symbolics import (DefFunction, MacroArgument, ccode, retrieve_indexed,
                               uxreplace)
@@ -24,17 +24,52 @@ def linearize(iet, **kwargs):
     # Simple data structure to avoid generation of duplicated code
     cache = defaultdict(lambda: Bunch(stmts0=[], stmts1=[], cbk=None))
 
-    linearize_accesses(iet, cache=cache, **kwargs)
+    linearization(iet, cache=cache, **kwargs)
 
 
 @iet_pass
-def linearize_accesses(iet, **kwargs):
+def linearization(iet, **kwargs):
     """
-    Actually implement linearize()
+    Carry out the actual work of `linearize`.
     """
     sregistry = kwargs['sregistry']
     cache = kwargs['cache']
 
+    iet, headers = linearize_accesses(iet, cache, sregistry)
+    iet = linearize_pointers(iet)
+    iet = linearize_transfers(iet)
+
+    return iet, {'headers': headers}
+
+
+def linearize_pointers(iet):
+    """
+    Flatten n-dimensional PointerCasts/Dereferences.
+    """
+    findexeds = [i for i in FindSymbols('indexeds').visit(iet) if isinstance(i, FIndexed)]
+    candidates = {i.function for i in findexeds}
+
+    mapper = {}
+
+    # Linearize casts, e.g. `float *u = (float*) u_vec->data`
+    mapper.update({n: n._rebuild(flat=n.function.name)
+                   for n in FindNodes(PointerCast).visit(iet)
+                   if n.function in candidates})
+
+    # Linearize array dereferences, e.g. `float *r1 = (float*) pr1[tid]`
+    mapper.update({n: n._rebuild(flat=n.pointee.name)
+                   for n in FindNodes(Dereference).visit(iet)
+                   if n.pointer.is_PointerArray and n.pointee in candidates})
+
+    iet = Transformer(mapper).visit(iet)
+
+    return iet
+
+
+def linearize_accesses(iet, cache, sregistry):
+    """
+    Turn Indexeds into FIndexeds and create the necessary access Macros.
+    """
     # Find unique sizes (unique -> minimize necessary registers)
     symbol_names = {i.name for i in FindSymbols('indexeds').visit(iet)}
     functions = [f for f in FindSymbols().visit(iet)
@@ -119,4 +154,9 @@ def linearize_accesses(iet, **kwargs):
     body = iet.body._rebuild(body=tuple(stmts0) + tuple(stmts1) + iet.body.body)
     iet = iet._rebuild(body=body)
 
-    return iet, {'headers': headers}
+    return iet, headers
+
+
+def linearize_transfers(iet):
+
+    return iet

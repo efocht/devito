@@ -15,7 +15,7 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
 from devito.symbolics import ListInitializer, ccode
-from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten, split
+from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten
 from devito.types import DeviceRM, FIndexed
 
 __all__ = ['DataManager', 'DeviceAwareDataManager', 'Storage']
@@ -282,25 +282,15 @@ class DataManager(object):
         indexeds = FindSymbols('indexeds|indexedbases').visit(iet)
         defines = set(FindSymbols('defines').visit(iet))
 
-        def needs_cast(f):
-            # The _C_name represents the name of the Function among the
-            # `iet.parameters`). If this differs from the name used within the
-            # expressions, then it implies a cast is required
-            return f not in defines and f._C_name != f.name
-
-        findexeds, iindexeds = split(indexeds, lambda i: isinstance(i, FIndexed))
+        # The _C_name represents the name of the Function among the
+        # `iet.parameters`). If this differs from the name used within the
+        # expressions, then it implies a cast is required
+        needs_cast = lambda f: f not in defines and f._C_name != f.name
 
         # Create Function -> n-dimensional array casts
         # E.g. `float (*u)[u_vec->size[1]] = (float (*)[u_vec->size[1]]) u_vec->data`
-        functions = sorted({i.function for i in iindexeds}, key=lambda i: i.name)
+        functions = sorted({i.function for i in indexeds}, key=lambda i: i.name)
         casts = [self.lang.PointerCast(f) for f in functions if needs_cast(f)]
-
-        # Create Function -> linearized n-dimensional array casts
-        # E.g. `float *ul = (float*) u_vec->data`
-        for i in findexeds:
-            if needs_cast(i.function):
-                defines.add(i.function)
-                casts.append(self.lang.PointerCast(i.function, flat=i.name))
 
         # Incorporate the newly created casts
         if casts:

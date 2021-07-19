@@ -12,7 +12,7 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB, LangTransformer, DeviceAwareMixin
 from devito.passes.iet.misc import is_on_device
 from devito.tools import as_tuple, prod
-from devito.types import FIndexed, Symbol, NThreadsBase
+from devito.types import Symbol, NThreadsBase
 
 __all__ = ['PragmaSimdTransformer', 'PragmaShmTransformer',
            'PragmaDeviceAwareTransformer', 'PragmaLangBB']
@@ -260,11 +260,7 @@ class PragmaShmTransformer(PragmaSimdTransformer):
                 pi = parrays[i]
             else:
                 pi = parrays.setdefault(i, i._make_pointer(dim=self.threadid))
-            if isinstance(n.output, FIndexed):
-                flat = n.output.name
-            else:
-                flat = None
-            vexpandeds.append(VExpanded(i, pi, flat=flat))
+            vexpandeds.append(VExpanded(i, pi))
 
         if vexpandeds:
             init = c.Initializer(c.Value(self.threadid._C_typedata, self.threadid.name),
