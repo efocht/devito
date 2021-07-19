@@ -200,13 +200,13 @@ class DeviceAccDataManager(DeviceAwareDataManager):
             # needs to be accessed on the host
             assert obj._mem_default
             size_trunkated = "".join("[%s]" % i for i in obj.symbolic_shape[1:])
-            decl = c.Value(obj._C_typedata, "(*%s)%s" % (obj.name, size_trunkated))
+            decl = c.Value(obj._C_typedata, "(*%s)%s" % (obj._C_name, size_trunkated))
             cast = "(%s (*)%s)" % (obj._C_typedata, size_trunkated)
             size_full = "sizeof(%s[%s])" % (obj._C_typedata, prod(obj.symbolic_shape))
             alloc = "%s %s" % (cast, self.lang['device-alloc'](size_full))
             init = c.Initializer(decl, alloc)
 
-            free = c.Statement(self.lang['device-free'](obj.name))
+            free = c.Statement(self.lang['device-free'](obj._C_name))
 
             storage.update(obj, site, allocs=init, frees=free)
 
