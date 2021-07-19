@@ -341,6 +341,10 @@ class DeviceAwareDataManager(DataManager):
         Map an Array already defined in the host memory in to the device high
         bandwidth memory.
         """
+        # If Array gets allocated directly in the device memory, there's nothing to map
+        if obj._mem_default:
+            return
+
         mmap = self.lang._map_alloc(obj)
         mmap = PragmaList(mmap, functions=obj,
                           free_symbols=[obj._C_symbol, obj.indexed.label])
