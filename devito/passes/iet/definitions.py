@@ -336,17 +336,31 @@ class DeviceAwareDataManager(DataManager):
         super().__init__(sregistry)
         self.gpu_fit = options['gpu-fit']
 
-    def _alloc_array_on_high_bw_mem(self, site, obj, storage):
-        _storage = Storage()
-        super()._alloc_array_on_high_bw_mem(site, obj, _storage)
+    def _map_array_on_high_bw_mem(self, site, obj, storage):
+        """
+        Map an Array already defined in the host memory in to the device high
+        bandwidth memory.
+        """
+        mmap = self.lang._map_alloc(obj)
+        mmap = PragmaList(mmap, functions=obj,
+                          free_symbols=[obj._C_symbol, obj.indexed.label])
 
-        allocs = _storage[site].allocs + [self.lang._map_alloc(obj)]
-        frees = [self.lang._map_delete(obj)] + _storage[site].frees
-        storage.update(obj, site, allocs=allocs, frees=frees)
+        unmap = self.lang._map_delete(obj)
+        unmap = PragmaList(unmap, functions=obj,
+                           free_symbols=[obj._C_symbol, obj.indexed.label])
+
+        storage.update(obj, site, maps=mmap, unmaps=unmap)
 
     def _map_function_on_high_bw_mem(self, site, obj, storage, devicerm, read_only=False):
         """
-        Place a Function in the high bandwidth memory.
+        Map a Function already defined in the host memory in to the device high
+        bandwidth memory.
+
+        Notes
+        -----
+        In essence, the difference between `_map_function_on_high_bw_mem` and
+        `_map_array_on_high_bw_mem` is that the former triggers a data transfer to
+        synchronize the host and device copies, while the latter does not.
         """
         mmap = self.lang._map_to(obj)
         mmap = PragmaList(mmap, functions=obj,
@@ -409,20 +423,27 @@ class DeviceAwareDataManager(DataManager):
                 if not any(isinstance(j, self.lang.DeviceIteration) for j in v):
                     # Not an offloaded Iteration tree
                     continue
-                if i.write.is_DiscreteFunction:
+                if i.write.is_AbstractFunction:
                     writes.add(i.write)
-                reads.update({r for r in i.reads if r.is_DiscreteFunction})
+                reads.update({r for r in i.reads if r.is_AbstractFunction})
 
             # Populate `storage`
             storage = Storage()
             for i in filter_sorted(writes):
-                if is_on_device(i, self.gpu_fit):
+                if not is_on_device(i, self.gpu_fit):
+                    continue
+                elif i.is_Array:
+                    self._map_array_on_high_bw_mem(iet, i, storage)
+                else:
                     self._map_function_on_high_bw_mem(iet, i, storage, devicerm)
             for i in filter_sorted(reads - writes):
-                if is_on_device(i, self.gpu_fit):
+                if not is_on_device(i, self.gpu_fit):
+                    continue
+                elif i.is_Array:
+                    self._map_array_on_high_bw_mem(iet, i, storage)
+                else:
                     self._map_function_on_high_bw_mem(iet, i, storage, devicerm, True)
 
-            iet = self._dump_definitions(iet, storage)
             iet = self._dump_transfers(iet, storage)
 
             return iet, {'args': devicerm}
