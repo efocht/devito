@@ -198,7 +198,7 @@ def linearize_accesses(iet, **kwargs):
     mapper.update([(f, []) for f in functions if f not in mapper])
 
     # Build defines. For example:
-    # `define uL(t, x, y, z) ul[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
+    # `define uL(t, x, y, z) u[(t)*t_slice_sz + (x)*x_slice_sz + (y)*y_slice_sz + (z)]`
     headers = []
     findexeds = {}
     for f, szs in mapper.items():
@@ -208,15 +208,14 @@ def linearize_accesses(iet, **kwargs):
         else:
             assert len(szs) == len(f.dimensions) - 1
             pname = sregistry.make_name(prefix='%sL' % f.name)
-            sname = sregistry.make_name(prefix='%sl' % f.name)
 
             expr = sum([MacroArgument(d.name)*s for d, s in zip(f.dimensions, szs)])
             expr += MacroArgument(f.dimensions[-1].name)
-            expr = Indexed(IndexedData(sname, None, f), expr)
+            expr = Indexed(IndexedData(f.name, None, f), expr)
             define = DefFunction(pname, f.dimensions)
             headers.append((ccode(define), ccode(expr)))
 
-            cache[f].cbk = findexeds[f] = lambda i, p=pname, s=sname: FIndexed(i, p, s)
+            cache[f].cbk = findexeds[f] = lambda i, pname=pname: FIndexed(i, pname)
 
     # Build "functional" Indexeds. For example:
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
