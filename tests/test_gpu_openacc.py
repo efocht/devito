@@ -1,9 +1,8 @@
 import pytest
 import numpy as np
 
-from conftest import skipif
-from devito import (Grid, Function, TimeFunction, SparseTimeFunction, Eq, Operator,
-                    norm, solve)
+from conftest import skipif, opts_openacc_tiling
+from devito import Grid, Function, TimeFunction, Eq, Operator, norm, solve
 from devito.data import LEFT
 from devito.exceptions import InvalidOperator
 from devito.ir.iet import FindNodes, Section, retrieve_iteration_tree
@@ -62,6 +61,28 @@ class TestCodeGeneration(object):
         except:
             assert False
 
+    @pytest.mark.parametrize('opt', opts_openacc_tiling)
+    def test_blocking_customop(self, opt):
+        grid = Grid(shape=(3, 3, 3))
+
+        u = TimeFunction(name='u', grid=grid)
+
+        op = Operator(Eq(u.forward, u + 1),
+                      platform='nvidiaX', language='openacc', opt=opt)
+
+        trees = retrieve_iteration_tree(op)
+        assert len(trees) == 1
+        assert len(trees[0]) == 7
+
+        assert all(i.dim.is_Incr for i in trees[0][1:7])
+
+        assert op.parameters[3] is trees[0][1].step
+        assert op.parameters[6] is trees[0][2].step
+        assert op.parameters[9] is trees[0][3].step
+
+        assert trees[0][1].pragmas[0].value ==\
+            'acc parallel loop collapse(3) present(u)'
+
     def test_streaming_postponed_deletion(self):
         grid = Grid(shape=(10, 10, 10))
 
@@ -109,33 +130,6 @@ class TestCodeGeneration(object):
         trees = retrieve_iteration_tree(op)
         assert len(trees) == 3
         assert 'present(f)' in str(trees[0][1].pragmas[0])
-
-    @pytest.mark.parametrize('par_tile', [True, (32, 4, 4)])
-    def test_tile_insteadof_collapse(self, par_tile):
-        grid = Grid(shape=(3, 3, 3))
-        t = grid.stepping_dim
-        x, y, z = grid.dimensions
-
-        u = TimeFunction(name='u', grid=grid)
-        src = SparseTimeFunction(name="src", grid=grid, nt=3, npoint=1)
-
-        eqns = [Eq(u.forward, u + 1,),
-                Eq(u[t+1, 0, y, z], u[t, 0, y, z] + 1.)]
-        eqns += src.inject(field=u.forward, expr=src)
-
-        op = Operator(eqns, platform='nvidiaX', language='openacc',
-                      opt=('advanced', {'par-tile': par_tile}))
-
-        trees = retrieve_iteration_tree(op)
-        assert len(trees) == 4
-
-        assert trees[0][1].pragmas[0].value ==\
-            'acc parallel loop tile(32,4,4) present(u)'
-        assert trees[1][1].pragmas[0].value ==\
-            'acc parallel loop tile(32,4) present(u)'
-        # Only the AFFINE Iterations are tiled
-        assert trees[3][1].pragmas[0].value ==\
-            'acc parallel loop collapse(1) present(src,src_coords,u)'
 
 
 class TestOperator(object):
