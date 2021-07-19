@@ -42,30 +42,6 @@ def linearization(iet, **kwargs):
     return iet, {'headers': headers}
 
 
-def linearize_pointers(iet):
-    """
-    Flatten n-dimensional PointerCasts/Dereferences.
-    """
-    findexeds = [i for i in FindSymbols('indexeds').visit(iet) if isinstance(i, FIndexed)]
-    candidates = {i.function for i in findexeds}
-
-    mapper = {}
-
-    # Linearize casts, e.g. `float *u = (float*) u_vec->data`
-    mapper.update({n: n._rebuild(flat=n.function.name)
-                   for n in FindNodes(PointerCast).visit(iet)
-                   if n.function in candidates})
-
-    # Linearize array dereferences, e.g. `float *r1 = (float*) pr1[tid]`
-    mapper.update({n: n._rebuild(flat=n.pointee.name)
-                   for n in FindNodes(Dereference).visit(iet)
-                   if n.pointer.is_PointerArray and n.pointee in candidates})
-
-    iet = Transformer(mapper).visit(iet)
-
-    return iet
-
-
 def linearize_accesses(iet, cache, sregistry):
     """
     Turn Indexeds into FIndexeds and create the necessary access Macros.
@@ -155,6 +131,30 @@ def linearize_accesses(iet, cache, sregistry):
     iet = iet._rebuild(body=body)
 
     return iet, headers
+
+
+def linearize_pointers(iet):
+    """
+    Flatten n-dimensional PointerCasts/Dereferences.
+    """
+    findexeds = [i for i in FindSymbols('indexeds').visit(iet) if isinstance(i, FIndexed)]
+    candidates = {i.function for i in findexeds}
+
+    mapper = {}
+
+    # Linearize casts, e.g. `float *u = (float*) u_vec->data`
+    mapper.update({n: n._rebuild(flat=n.function.name)
+                   for n in FindNodes(PointerCast).visit(iet)
+                   if n.function in candidates})
+
+    # Linearize array dereferences, e.g. `float *r1 = (float*) pr1[tid]`
+    mapper.update({n: n._rebuild(flat=n.pointee.name)
+                   for n in FindNodes(Dereference).visit(iet)
+                   if n.pointer.is_PointerArray and n.pointee in candidates})
+
+    iet = Transformer(mapper).visit(iet)
+
+    return iet
 
 
 def linearize_transfers(iet):
