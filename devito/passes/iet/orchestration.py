@@ -5,7 +5,7 @@ from sympy import Or
 
 from devito.data import FULL
 from devito.ir.iet import (Call, Callable, Conditional, List, SyncSpot, FindNodes,
-                           Transformer, BlankLine, BusyWait, PragmaList,
+                           Transformer, BlankLine, BusyWait, PragmaTransfer,
                            DummyExpr, derive_parameters, make_thread_ctx)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
@@ -187,8 +187,7 @@ class Orchestrator(object):
 
             # Construct init IET
             imask = [(ifc, s.size) if d.root is s.dim.root else FULL for d in dimensions]
-            fetch = PragmaList(self.lang._map_to(f, imask), f,
-                               ifc.free_symbols | {f.indexed})
+            fetch = PragmaTransfer(self.lang._map_to(f, imask), f, imask)
             fetches.append(Conditional(fcond, fetch))
 
             # Construct present clauses
@@ -197,8 +196,7 @@ class Orchestrator(object):
 
             # Construct prefetch IET
             imask = [(pfc, s.size) if d.root is s.dim.root else FULL for d in dimensions]
-            prefetch = PragmaList(self.lang._map_to_wait(f, imask, fid), f,
-                                  pfc.free_symbols | {f.indexed})
+            prefetch = PragmaTransfer(self.lang._map_to_wait(f, imask, fid), f, imask)
             prefetches.append(Conditional(pcond, prefetch))
 
         # Turn init IET into a Callable

@@ -356,6 +356,12 @@ class CGen(Visitor):
 
         return handle
 
+    def visit_Pragma(self, o):
+        if len(o.pragmas) == 1:
+            return o.pragmas[0]
+        else:
+            return c.Collection(o.pragmas)
+
     def visit_While(self, o):
         condition = ccode(o.condition)
         if o.body:
@@ -668,6 +674,7 @@ class FindSymbols(Visitor):
 
     visit_PointerCast = visit_Expression
     visit_Dereference = visit_Expression
+    visit_Pragma = visit_Expression
 
     def visit_Call(self, o):
         return self.Retval(self._visit(o.children), self.rule(o))

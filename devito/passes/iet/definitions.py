@@ -9,7 +9,7 @@ from operator import itemgetter
 
 import cgen as c
 
-from devito.ir import (EntryFunction, List, LocalExpression, PragmaList,
+from devito.ir import (EntryFunction, List, LocalExpression, PragmaTransfer,
                        FindSymbols, MapExprStmts, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
@@ -335,13 +335,8 @@ class DeviceAwareDataManager(DataManager):
         if obj._mem_default:
             return
 
-        mmap = self.lang._map_alloc(obj)
-        mmap = PragmaList(mmap, functions=obj,
-                          free_symbols=[obj._C_symbol, obj.indexed.label])
-
-        unmap = self.lang._map_delete(obj)
-        unmap = PragmaList(unmap, functions=obj,
-                           free_symbols=[obj._C_symbol, obj.indexed.label])
+        mmap = PragmaTransfer(self.lang._map_alloc(obj), obj)
+        unmap = PragmaTransfer(self.lang._map_delete(obj), obj)
 
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
@@ -356,40 +351,22 @@ class DeviceAwareDataManager(DataManager):
         `_map_array_on_high_bw_mem` is that the former triggers a data transfer to
         synchronize the host and device copies, while the latter does not.
         """
-        mmap = self.lang._map_to(obj)
-        mmap = PragmaList(mmap, functions=obj,
-                          free_symbols=[obj._C_symbol, obj.indexed.label])
+        mmap = PragmaTransfer(self.lang._map_to(obj), obj)
 
         if read_only is False:
             unmap = c.Collection([self.lang._map_update(obj),
                                   self.lang._map_release(obj, devicerm=devicerm)])
         else:
             unmap = self.lang._map_delete(obj, devicerm=devicerm)
-        unmap = PragmaList(unmap, functions=obj,
-                           free_symbols=[obj._C_symbol, obj.indexed.label])
+        unmap = PragmaTransfer(unmap, obj)
 
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
     def _dump_transfers(self, iet, storage):
         mapper = {}
         for k, v in storage.items():
-            if v.maps:
-                maps = PragmaList(
-                    flatten(i.pragmas for i in v.maps),
-                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
-                )
-            else:
-                maps = None
-            if v.unmaps:
-                unmaps = PragmaList(
-                    flatten(i.pragmas for i in v.unmaps),
-                    functions=filter_ordered(flatten(i.functions for i in v.maps)),
-                    free_symbols=filter_ordered(flatten(i.expr_symbols for i in v.maps))
-                )
-            else:
-                unmaps = None
-            mapper[iet.body] = iet.body._rebuild(maps=maps, unmaps=unmaps)
+            if v.maps or v.unmaps:
+                mapper[iet.body] = iet.body._rebuild(maps=v.maps, unmaps=v.unmaps)
 
         processed = Transformer(mapper, nested=True).visit(iet)
 

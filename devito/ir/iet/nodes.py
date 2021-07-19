@@ -22,7 +22,7 @@ __all__ = ['Node', 'Block', 'Expression', 'Element', 'Callable', 'Call', 'Condit
            'MetaCall', 'PointerCast', 'ForeignExpression', 'HaloSpot', 'IterationTree',
            'ExpressionBundle', 'AugmentedExpression', 'Increment', 'Return', 'While',
            'ParallelIteration', 'ParallelBlock', 'Dereference', 'Lambda', 'SyncSpot',
-           'PragmaList', 'DummyExpr', 'BlankLine', 'ParallelTree', 'BusyWait',
+           'PragmaTransfer', 'DummyExpr', 'BlankLine', 'ParallelTree', 'BusyWait',
            'CallableBody']
 
 # First-class IET nodes
@@ -690,18 +690,18 @@ class CallableBody(Node):
     init : Node, optional
         A piece of IET to perform some initialization relevant for `body`
         (e.g., to initialize the target language runtime).
-    unpacks : iterable of Nodes, optional
+    unpacks : list of Nodes, optional
         Statements unpacking data from composite types.
-    allocs : iterable of cgen objects, optional
+    allocs : list of cgen objects, optional
         Data allocations for `body`.
-    casts : iterable of PointerCasts, optional
+    casts : list of PointerCasts, optional
         Sequence of PointerCasts required by the `body`.
-    maps : PragmaList, optional
+    maps : Transfer or list of Transfer, optional
         Data maps for `body` (a data map may e.g. trigger a data transfer from
         host to device).
-    unmaps : PragmaList, optional
+    unmaps : Transfer or list of Transfer, optional
         Data unmaps for `body`.
-    frees : iterable of cgen objects, optional
+    frees : list of cgen objects, optional
         Data deallocations for `body`.
     """
 
@@ -1084,28 +1084,49 @@ class Prodder(Call):
         return self._periodic
 
 
-class PragmaList(List):
+class Pragma(Node):
 
     """
-    A floating sequence of pragmas.
+    One or more pragmas floating in the IET.
     """
 
-    def __init__(self, pragmas, functions=None, free_symbols=None, **kwargs):
-        super().__init__(header=pragmas)
-        self._functions = as_tuple(functions)
-        self._free_symbols = as_tuple(free_symbols)
+    def __init__(self, pragmas):
+        super().__init__()
+        self.pragmas = as_tuple(pragmas)
 
-    @property
-    def pragmas(self):
-        return self.header
+    def __repr__(self):
+        return '<Pragmas>'
+
+
+class Transfer(object):
+
+    """
+    A mixin for nodes representing data transfers.
+    """
+
+    pass
+
+
+class PragmaTransfer(Pragma, Transfer):
+
+    """
+    A data transfer between host and device expressed by means of one or more pragmas.
+    """
+
+    def __init__(self, pragmas, function, imask=None):
+        super().__init__(pragmas)
+        self.function = function
+        self.imask = imask
 
     @property
     def functions(self):
-        return self._functions
+        return (self.function,)
 
-    @property
+    @cached_property
     def expr_symbols(self):
-        return self._free_symbols
+        retval = [self.function.indexed]
+        retval.extend([i for i in flatten(as_tuple(self.imask)) if isinstance(i, Symbol)])
+        return tuple(retval)
 
 
 class ParallelIteration(Iteration):
