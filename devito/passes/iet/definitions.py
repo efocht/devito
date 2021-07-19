@@ -83,7 +83,7 @@ class DataManager(object):
         alignment = self.lang['aligned'](obj._data_alignment)
         decl = c.Value(obj._C_typedata, "%s%s %s" % (obj._C_name, shape, alignment))
 
-        if obj.initvalue:
+        if obj.initvalue is not None:
             storage.update(obj, site,
                            allocs=c.Initializer(decl, ListInitializer(obj.initvalue)))
         else:

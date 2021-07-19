@@ -234,7 +234,8 @@ def linearize_accesses(iet, **kwargs):
         stmts1.append(BlankLine)
 
     iet = Transformer(mapper).visit(iet)
-    iet = iet._rebuild(body=List(body=stmts0 + stmts1 + list(iet.body)))
+    body = iet.body._rebuild(body=tuple(stmts0) + tuple(stmts1) + iet.body.body)
+    iet = iet._rebuild(body=body)
 
     return iet, {'headers': headers}
 
