@@ -1125,7 +1125,11 @@ class PragmaTransfer(Pragma, Transfer):
     @cached_property
     def expr_symbols(self):
         retval = [self.function.indexed]
-        retval.extend([i for i in flatten(as_tuple(self.imask)) if isinstance(i, Symbol)])
+        for i in flatten(as_tuple(self.imask)):
+            try:
+                retval.extend(i.free_symbols)
+            except AttributeError:
+                pass
         return tuple(retval)
 
 
