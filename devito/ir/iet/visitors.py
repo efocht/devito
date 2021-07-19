@@ -6,8 +6,10 @@ The main Visitor class is adapted from https://github.com/coneoproject/COFFEE.
 
 from collections import OrderedDict
 from collections.abc import Iterable
+from itertools import chain
 
 import cgen as c
+from sympy import IndexedBase
 
 from devito.exceptions import VisitorException
 from devito.ir.iet.nodes import Node, Iteration, Expression, Call, Lambda
@@ -620,22 +622,30 @@ class FindSymbols(Visitor):
     ----------
     mode : str, optional
         Drive the search. Accepted:
-        - `symbolics`: Collect all AbstractFunction objects, default.
-        - `basics`: Collect all Basic objects.
-        - `indexeds`: Collect all Indexed objects.
-        - `defines`: Collect all defined objects.
+        - `symbolics`: Collect all AbstractFunction objects, default
+        - `basics`: Collect all Basic objects
+        - `indexeds`: Collect all Indexed objects
+        - `indexedbases`: Collect all IndexedBase objects
+        - `defines`: Collect all defined objects
     """
 
     rules = {
         'symbolics': lambda n: n.functions,
         'basics': lambda n: [i for i in n.expr_symbols if isinstance(i, Basic)],
         'indexeds': lambda n: [i for i in n.expr_symbols if i.is_Indexed],
+        'indexedbases': lambda n: [i for i in n.expr_symbols
+                                   if isinstance(i, IndexedBase)],
         'defines': lambda n: as_tuple(n.defines),
     }
 
     def __init__(self, mode='symbolics'):
         super(FindSymbols, self).__init__()
-        self.rule = self.rules[mode]
+
+        modes = mode.split('|')
+        if len(modes) == 1:
+            self.rule = self.rules[mode]
+        else:
+            self.rule = lambda n: chain(*[self.rules[mode](n) for mode in modes])
 
     def visit_tuple(self, o):
         return self.Retval(*[self._visit(i) for i in o])

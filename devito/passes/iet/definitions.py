@@ -279,7 +279,7 @@ class DataManager(object):
         iet : Callable
             The input Iteration/Expression tree.
         """
-        indexeds = FindSymbols('indexeds').visit(iet)
+        indexeds = FindSymbols('indexeds|indexedbases').visit(iet)
         defines = set(FindSymbols('defines').visit(iet))
 
         def needs_cast(f):
