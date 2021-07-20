@@ -48,6 +48,25 @@ class TestCodeGeneration(object):
         assert trees[0][1] is not trees[1][1]
 
 
+class TestOptionalPasses(object):
+
+    def test_linearize(self):
+        grid = Grid(shape=(4, 4))
+
+        u = TimeFunction(name='u', grid=grid)
+
+        eqn = Eq(u.forward, u + 1)
+
+        op = Operator(eqn, opt=('advanced', {'linearize': True}))
+
+        # Check generated code
+        assert 'uL0' in str(op)
+
+        # Check jit-compilation and correct execution
+        op.apply(time_M=10)
+        assert np.all(u.data[1] == 11)
+
+
 class Bundle(SubDomain):
     """
     We use this SubDomain to enforce Eqs to end up in different loops.
@@ -62,7 +81,11 @@ class Bundle(SubDomain):
 
 class TestStreaming(object):
 
-    def test_tasking_in_isolation(self):
+    @pytest.mark.parametrize('opt', [
+        ('tasking', 'orchestrate'),
+        ('tasking', 'orchestrate', {'linearize': True}),
+    ])
+    def test_tasking_in_isolation(self, opt):
         nt = 10
         bundle0 = Bundle()
         grid = Grid(shape=(10, 10, 10), subdomains=bundle0)
@@ -75,7 +98,7 @@ class TestStreaming(object):
                 Eq(v.forward, v + 1),
                 Eq(u.forward, tmp, subdomain=bundle0)]
 
-        op = Operator(eqns, opt=('tasking', 'orchestrate'))
+        op = Operator(eqns, opt=opt)
 
         # Check generated code
         assert len(retrieve_iteration_tree(op)) == 5
@@ -790,8 +813,12 @@ class TestStreaming(object):
             assert np.all(usave.data[i, :, -3:] == 0)
 
     @pytest.mark.parametrize('opt,ntmps', [
-        pytest.param(('streaming', 'orchestrate'), 0, marks=skipif('device-openmp')),
+        pytest.param(('streaming', 'orchestrate'), 0,
+                     marks=skipif('device-openmp')),
+        pytest.param(('streaming', 'orchestrate', {'linearize': True}), 0,
+                     marks=skipif('device-openmp')),
         (('buffering', 'streaming', 'orchestrate'), 1),
+        (('buffering', 'streaming', 'orchestrate', {'linearize': True}), 1),
     ])
     def test_streaming_w_shifting(self, opt, ntmps):
         nt = 50
@@ -914,12 +941,13 @@ class TestStreaming(object):
         assert np.all(u.data[0] == u1.data[0])
         assert np.all(u.data[1] == u1.data[1])
 
-    @pytest.mark.parametrize('opt,gpu_fit', [
-        (('streaming', 'orchestrate'), True),
-        pytest.param(('streaming', 'orchestrate'), False, marks=skipif('device-openmp')),
-        (('buffering', 'streaming', 'orchestrate'), False)
+    @pytest.mark.parametrize('opt,opt_options,gpu_fit', [
+        (('streaming', 'orchestrate'), {}, True),
+        (('streaming', 'orchestrate'), {}, False),
+        (('buffering', 'streaming', 'orchestrate'), {}, False),
+        (('buffering', 'streaming', 'orchestrate'), {'linearize': True}, False)
     ])
-    def test_xcor_from_saved(self, opt, gpu_fit):
+    def test_xcor_from_saved(self, opt, opt_options, gpu_fit):
         nt = 10
         grid = Grid(shape=(300, 300, 300))
         time_dim = grid.time_dim
@@ -938,10 +966,12 @@ class TestStreaming(object):
             usave.data[i, :] = i
         v.data[:] = i*2 + 1
 
+        opt_options = {'gpu-fit': usave if gpu_fit else None, **opt_options}
+
         # Assuming nt//period=5, we are computing, over 5 iterations:
         # g = 4*4  [time=8] + 3*3 [time=6] + 2*2 [time=4] + 1*1 [time=2]
         op = Operator([Eq(v.backward, v - 1), Inc(g, usave*(v/2))],
-                      opt=(opt, {'gpu-fit': usave if gpu_fit else None}))
+                      opt=(opt, opt_options))
 
         op.apply(time_M=nt-1)
 
@@ -1049,22 +1079,3 @@ class TestEdgeCases(object):
         op(time_m=0, time_M=9)
         sf.manual_gather()
         assert np.all(f.data == 1.)
-
-
-class TestOptionalPasses(object):
-
-    def test_linearize(self):
-        grid = Grid(shape=(4, 4))
-
-        u = TimeFunction(name='u', grid=grid)
-
-        eqn = Eq(u.forward, u + 1)
-
-        op = Operator(eqn, opt=('advanced', {'linearize': True}))
-
-        # Check generated code
-        assert 'uL0' in str(op)
-
-        # Check jit-compilation and correct execution
-        op.apply(time_M=10)
-        assert np.all(u.data[1] == 11)

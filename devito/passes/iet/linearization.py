@@ -166,12 +166,21 @@ def linearize_pointers(iet):
 
 def linearize_transfers(iet):
     mapper = {}
-    from IPython import embed; embed()
     for n in FindNodes(PragmaTransfer).visit(iet):
         try:
             imask = n.kwargs['imask']
         except KeyError:
-            mapper[n] = n._rebuild(imask=[])
+            imask = []
+
+        try:
+            index = imask.index(FULL)
+        except ValueError:
+            index = len(imask)
+
+        # Drop entries being flatten
+        imask = imask[:index]
+
+        mapper[n] = n._rebuild(imask=imask)
 
     iet = Transformer(mapper).visit(iet)
 
