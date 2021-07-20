@@ -49,7 +49,7 @@ def linearize_accesses(iet, cache, sregistry):
     # Find all objects amenable to linearization
     symbol_names = {i.name for i in FindSymbols('indexeds').visit(iet)}
     functions = [f for f in FindSymbols().visit(iet)
-                 if (f.is_AbstractFunction or f.is_Array) and f.name in symbol_names]
+                 if (f.is_DiscreteFunction or f.is_Array) and f.name in symbol_names]
     functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
 
     # Find unique sizes (unique -> minimize necessary registers)
@@ -166,10 +166,10 @@ def linearize_pointers(iet):
 
 def linearize_transfers(iet):
     mapper = {}
+    from IPython import embed; embed()
     for n in FindNodes(PragmaTransfer).visit(iet):
         try:
             imask = n.kwargs['imask']
-            from IPython import embed; embed()
         except KeyError:
             mapper[n] = n._rebuild(imask=[])
 
