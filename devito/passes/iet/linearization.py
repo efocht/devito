@@ -16,7 +16,7 @@ from devito.types.basic import IndexedData
 __all__ = ['linearize']
 
 
-def linearize(iet, **kwargs):
+def linearize(graph, **kwargs):
     """
     Turn n-dimensional Indexeds into 1-dimensional Indexed with suitable index
     access function, such as `a[i, j]` -> `a[i*n + j]`.
@@ -24,7 +24,7 @@ def linearize(iet, **kwargs):
     # Simple data structure to avoid generation of duplicated code
     cache = defaultdict(lambda: Bunch(stmts0=[], stmts1=[], cbk=None))
 
-    linearization(iet, cache=cache, **kwargs)
+    linearization(graph, cache=cache, **kwargs)
 
 
 @iet_pass
@@ -46,11 +46,13 @@ def linearize_accesses(iet, cache, sregistry):
     """
     Turn Indexeds into FIndexeds and create the necessary access Macros.
     """
-    # Find unique sizes (unique -> minimize necessary registers)
+    # Find all objects amenable to linearization
     symbol_names = {i.name for i in FindSymbols('indexeds').visit(iet)}
     functions = [f for f in FindSymbols().visit(iet)
-                 if f.is_AbstractFunction and f.name in symbol_names]
+                 if (f.is_AbstractFunction or f.is_Array) and f.name in symbol_names]
     functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
+
+    # Find unique sizes (unique -> minimize necessary registers)
     mapper = DefaultOrderedDict(list)
     for f in functions:
         if f not in cache:
@@ -115,7 +117,12 @@ def linearize_accesses(iet, cache, sregistry):
     # `u[t2, x+8, y+9, z+7] => uL(t2, x+8, y+9, z+7)`
     mapper = {}
     for n in FindNodes(Expression).visit(iet):
-        subs = {i: findexeds[i.function](i) for i in retrieve_indexed(n.expr)}
+        subs = {}
+        for i in retrieve_indexed(n.expr):
+            try:
+                subs[i] = findexeds[i.function](i)
+            except KeyError:
+                pass
         mapper[n] = n._rebuild(expr=uxreplace(n.expr, subs))
 
     # Put together all of the necessary exprs for `y_fsz0`, ..., `y_slc0`, ...
