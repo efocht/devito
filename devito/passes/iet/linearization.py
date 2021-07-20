@@ -4,7 +4,7 @@ import numpy as np
 
 from devito.data import FULL
 from devito.ir import (BlankLine, DummyEq, Dereference, Expression, LocalExpression,
-                       PointerCast, FindNodes, FindSymbols, Transformer)
+                       PointerCast, PragmaTransfer, FindNodes, FindSymbols, Transformer)
 from devito.passes.iet.engine import iet_pass
 from devito.symbolics import (DefFunction, MacroArgument, ccode, retrieve_indexed,
                               uxreplace)
@@ -158,5 +158,14 @@ def linearize_pointers(iet):
 
 
 def linearize_transfers(iet):
+    mapper = {}
+    for n in FindNodes(PragmaTransfer).visit(iet):
+        try:
+            imask = n.kwargs['imask']
+            from IPython import embed; embed()
+        except KeyError:
+            mapper[n] = n._rebuild(imask=[])
+
+    iet = Transformer(mapper).visit(iet)
 
     return iet

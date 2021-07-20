@@ -72,7 +72,7 @@ class LangBB(object, metaclass=LangMeta):
         raise NotImplementedError
 
     @classmethod
-    def _map_update(cls, f):
+    def _map_update(cls, f, imask=None):
         """
         Copyi Function from device to host memory.
         """
@@ -107,7 +107,7 @@ class LangBB(object, metaclass=LangMeta):
         raise NotImplementedError
 
     @classmethod
-    def _map_release(cls, f, devicerm=None):
+    def _map_release(cls, f, imask=None, devicerm=None):
         """
         Release device pointer to a Function.
         """

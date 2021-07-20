@@ -481,7 +481,7 @@ class PragmaLangBB(LangBB):
         datasize = cls._map_data(f)
         if imask is None:
             imask = [FULL]*len(datasize)
-        assert len(imask) == len(datasize)
+
         sections = []
         for i, j in zip(imask, datasize):
             if i is FULL:
@@ -491,9 +491,21 @@ class PragmaLangBB(LangBB):
                     start, size = i
                 except TypeError:
                     start, size = i, 1
-                start = ccode(start)
-            sections.append('[%s:%s]' % (start, size))
-        return ''.join(sections)
+            sections.append((start, size))
+
+        # Unroll (or "flatten") then remaining Dimensions not captured by `imask`
+        if len(imask) < len(datasize):
+            try:
+                start, size = sections.pop(-1)
+            except IndexError:
+                start, size = (0, 1)
+            remainder_size = prod(datasize[len(imask):])
+            sections.append((start*remainder_size, size*remainder_size))
+
+        sections = ['[%s:%s]' % (ccode(start), ccode(size)) for start, size in sections]
+        sections = ''.join(sections)
+
+        return sections
 
     @classmethod
     def _map_data(cls, f):
@@ -519,9 +531,9 @@ class PragmaLangBB(LangBB):
         return
 
     @classmethod
-    def _map_update(cls, f):
-        return cls.mapper['map-update'](f.name, ''.join('[0:%s]' % i
-                                                        for i in cls._map_data(f)))
+    def _map_update(cls, f, imask=None):
+        sections = cls._make_sections_from_imask(f, imask)
+        return cls.mapper['map-update'](f.name, sections)
 
     @classmethod
     def _map_update_host(cls, f, imask=None, queueid=None):
@@ -538,9 +550,9 @@ class PragmaLangBB(LangBB):
     _map_update_wait_device = _map_update_device
 
     @classmethod
-    def _map_release(cls, f, devicerm=None):
-        return cls.mapper['map-release'](f.name,
-                                         ''.join('[0:%s]' % i for i in cls._map_data(f)),
+    def _map_release(cls, f, imask=None, devicerm=None):
+        sections = cls._make_sections_from_imask(f, imask)
+        return cls.mapper['map-release'](f.name, sections,
                                          (' if(%s)' % devicerm.name) if devicerm else '')
 
     @classmethod

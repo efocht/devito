@@ -1113,10 +1113,11 @@ class PragmaTransfer(Pragma, Transfer):
     A data transfer between host and device expressed by means of one or more pragmas.
     """
 
-    def __init__(self, pragmas, function, imask=None):
-        super().__init__(pragmas)
+    def __init__(self, callback, function, **kwargs):
+        super().__init__(callback(function, **kwargs))
+        self.callback = callback
         self.function = function
-        self.imask = imask
+        self.kwargs = kwargs
 
     @property
     def functions(self):
@@ -1125,7 +1126,7 @@ class PragmaTransfer(Pragma, Transfer):
     @cached_property
     def expr_symbols(self):
         retval = [self.function.indexed]
-        for i in flatten(as_tuple(self.imask)):
+        for i in flatten(self.kwargs.items()):
             try:
                 retval.extend(i.free_symbols)
             except AttributeError:

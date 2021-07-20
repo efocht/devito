@@ -187,7 +187,7 @@ class Orchestrator(object):
 
             # Construct init IET
             imask = [(ifc, s.size) if d.root is s.dim.root else FULL for d in dimensions]
-            fetch = PragmaTransfer(self.lang._map_to(f, imask), f, imask)
+            fetch = PragmaTransfer(self.lang._map_to, f, imask=imask)
             fetches.append(Conditional(fcond, fetch))
 
             # Construct present clauses
@@ -196,7 +196,7 @@ class Orchestrator(object):
 
             # Construct prefetch IET
             imask = [(pfc, s.size) if d.root is s.dim.root else FULL for d in dimensions]
-            prefetch = PragmaTransfer(self.lang._map_to_wait(f, imask, fid), f, imask)
+            prefetch = PragmaTransfer(self.lang._map_to_wait, f, imask=imask, queueid=fid)
             prefetches.append(Conditional(pcond, prefetch))
 
         # Turn init IET into a Callable

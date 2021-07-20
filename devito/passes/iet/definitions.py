@@ -15,8 +15,8 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB
 from devito.passes.iet.misc import is_on_device
 from devito.symbolics import ListInitializer, ccode
-from devito.tools import as_mapper, filter_ordered, filter_sorted, flatten
-from devito.types import DeviceRM, FIndexed
+from devito.tools import as_mapper, filter_sorted, flatten
+from devito.types import DeviceRM
 
 __all__ = ['DataManager', 'DeviceAwareDataManager', 'Storage']
 
@@ -335,8 +335,8 @@ class DeviceAwareDataManager(DataManager):
         if obj._mem_default:
             return
 
-        mmap = PragmaTransfer(self.lang._map_alloc(obj), obj)
-        unmap = PragmaTransfer(self.lang._map_delete(obj), obj)
+        mmap = PragmaTransfer(self.lang._map_alloc, obj)
+        unmap = PragmaTransfer(self.lang._map_delete, obj)
 
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
@@ -351,14 +351,13 @@ class DeviceAwareDataManager(DataManager):
         `_map_array_on_high_bw_mem` is that the former triggers a data transfer to
         synchronize the host and device copies, while the latter does not.
         """
-        mmap = PragmaTransfer(self.lang._map_to(obj), obj)
+        mmap = PragmaTransfer(self.lang._map_to, obj)
 
         if read_only is False:
-            unmap = c.Collection([self.lang._map_update(obj),
-                                  self.lang._map_release(obj, devicerm=devicerm)])
+            unmap = [PragmaTransfer(self.lang._map_update, obj),
+                     PragmaTransfer(self.lang._map_release, obj, devicerm=devicerm)]
         else:
-            unmap = self.lang._map_delete(obj, devicerm=devicerm)
-        unmap = PragmaTransfer(unmap, obj)
+            unmap = PragmaTransfer(self.lang._map_delete, obj, devicerm=devicerm)
 
         storage.update(obj, site, maps=mmap, unmaps=unmap)
 
@@ -366,7 +365,8 @@ class DeviceAwareDataManager(DataManager):
         mapper = {}
         for k, v in storage.items():
             if v.maps or v.unmaps:
-                mapper[iet.body] = iet.body._rebuild(maps=v.maps, unmaps=v.unmaps)
+                mapper[iet.body] = iet.body._rebuild(maps=flatten(v.maps),
+                                                     unmaps=flatten(v.unmaps))
 
         processed = Transformer(mapper, nested=True).visit(iet)
 
