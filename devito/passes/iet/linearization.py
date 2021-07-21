@@ -193,7 +193,10 @@ def linearize_transfers(iet, sregistry):
         exprs = []
         if len(imask) < len(imask0) and len(imask) > 0:
             assert len(imask) == 1
-            start, size = imask[0]
+            try:
+                start, size = imask[0]
+            except TypeError:
+                start, size = imask[0], 1
 
             if start != 0:  # Spare the ugly generated code if unneccesary (occurs often)
                 name = sregistry.make_name(prefix='%s_ofs' % n.function.name)
