@@ -63,16 +63,6 @@ class VolatileInt(Symbol):
         return c_volatile_int
 
 
-# ctypes subtypes
-
-class c_volatile_int(c_int):
-    pass
-
-
-class c_volatile_int_p(c_void_p):
-    pass
-
-
 class FIndexed(Indexed, Pickable):
 
     """
@@ -108,3 +98,13 @@ class FIndexed(Indexed, Pickable):
     # Pickling support
     _pickle_args = ['indexed', 'pname']
     __reduce_ex__ = Pickable.__reduce_ex__
+
+
+# ctypes subtypes
+
+class c_volatile_int(c_int):
+    pass
+
+
+class c_volatile_int_p(c_void_p):
+    pass
