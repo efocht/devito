@@ -50,7 +50,9 @@ def linearize_accesses(iet, cache, sregistry):
     # Find all objects amenable to linearization
     symbol_names = {i.name for i in FindSymbols('indexeds').visit(iet)}
     functions = [f for f in FindSymbols().visit(iet)
-                 if (f.is_DiscreteFunction or f.is_Array) and f.name in symbol_names]
+                 if ((f.is_DiscreteFunction or f.is_Array) and
+                     f.ndim > 1 and
+                     f.name in symbol_names)]
     functions = sorted(functions, key=lambda f: len(f.dimensions), reverse=True)
 
     # Find unique sizes (unique -> minimize necessary registers)
@@ -189,7 +191,7 @@ def linearize_transfers(iet, sregistry):
         # being perfectly legal OpenACC code. The workaround consists of
         # generating `const int ofs = a[0]; ... copyin(n:b[0])`
         exprs = []
-        if len(imask) < len(imask0):
+        if len(imask) < len(imask0) and len(imask) > 0:
             assert len(imask) == 1
             start, size = imask[0]
 
