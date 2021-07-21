@@ -3,13 +3,14 @@ from collections import defaultdict
 import numpy as np
 
 from devito.data import FULL
-from devito.ir import (BlankLine, DummyEq, Dereference, Expression, LocalExpression,
+from devito.ir import (BlankLine, DummyEq, Dereference, Expression, List, LocalExpression,
                        PointerCast, PragmaTransfer, FindNodes, FindSymbols, Transformer)
 from devito.passes.iet.engine import iet_pass
+from devito.passes.iet.parpragma import PragmaLangBB
 from devito.symbolics import (DefFunction, MacroArgument, ccode, retrieve_indexed,
                               uxreplace)
 from devito.tools import Bunch, DefaultOrderedDict, filter_ordered, flatten, prod
-from devito.types import Symbol, FIndexed, Indexed
+from devito.types import Symbol, FIndexed, Indexed, Wildcard
 from devito.types.basic import IndexedData
 
 
@@ -37,7 +38,7 @@ def linearization(iet, **kwargs):
 
     iet, headers = linearize_accesses(iet, cache, sregistry)
     iet = linearize_pointers(iet)
-    iet = linearize_transfers(iet)
+    iet = linearize_transfers(iet, sregistry)
 
     return iet, {'headers': headers}
 
@@ -145,8 +146,8 @@ def linearize_pointers(iet):
     """
     Flatten n-dimensional PointerCasts/Dereferences.
     """
-    findexeds = [i for i in FindSymbols('indexeds').visit(iet) if isinstance(i, FIndexed)]
-    candidates = {i.function for i in findexeds}
+    indexeds = [i for i in FindSymbols('indexeds|indexedbases').visit(iet)]
+    candidates = {i.function for i in indexeds if isinstance(i, (FIndexed, IndexedData))}
 
     mapper = {}
 
@@ -165,23 +166,49 @@ def linearize_pointers(iet):
     return iet
 
 
-def linearize_transfers(iet):
+def linearize_transfers(iet, sregistry):
     mapper = {}
     for n in FindNodes(PragmaTransfer).visit(iet):
         try:
-            imask = n.kwargs['imask']
+            imask0 = n.kwargs['imask']
         except KeyError:
-            imask = []
+            imask0 = []
 
         try:
-            index = imask.index(FULL)
+            index = imask0.index(FULL)
         except ValueError:
-            index = len(imask)
+            index = len(imask0)
 
         # Drop entries being flatten
-        imask = imask[:index]
+        imask = imask0[:index]
 
-        mapper[n] = n._rebuild(imask=imask)
+        # The NVC 21.2 compiler (as well as all previous and potentially some
+        # future versions as well) suffers from a bug in the parsing of pragmas
+        # using subarrays in data clauses. For example, the following pragma
+        # excerpt `... copyin(a[0]:b[0])` leads to a compiler error, despite
+        # being perfectly legal OpenACC code. The workaround consists of
+        # generating `const int ofs = a[0]; ... copyin(n:b[0])`
+        exprs = []
+        if len(imask) < len(imask0):
+            assert len(imask) == 1
+            _, size = imask[0]
+
+            name = sregistry.make_name(prefix='%s_ofs' % n.function.name)
+            wildcard = Wildcard(name=name, dtype=np.int32, is_const=True)
+
+            symsect = PragmaLangBB._make_symbolic_sections_from_imask(n.function, imask)
+            assert len(symsect) == 1
+            start, _ = symsect[0]
+            exprs.append(LocalExpression(DummyEq(wildcard, start)))
+
+            imask = [(wildcard, size)]
+
+        rebuilt = n._rebuild(imask=imask)
+
+        if exprs:
+            mapper[n] = List(body=exprs + [rebuilt])
+        else:
+            mapper[n] = rebuilt
 
     iet = Transformer(mapper).visit(iet)
 

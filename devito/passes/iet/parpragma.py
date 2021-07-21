@@ -12,7 +12,7 @@ from devito.passes.iet.engine import iet_pass
 from devito.passes.iet.langbase import LangBB, LangTransformer, DeviceAwareMixin
 from devito.passes.iet.misc import is_on_device
 from devito.tools import as_tuple, prod
-from devito.types import Symbol, NThreadsBase
+from devito.types import Symbol, NThreadsBase, Wildcard
 
 __all__ = ['PragmaSimdTransformer', 'PragmaShmTransformer',
            'PragmaDeviceAwareTransformer', 'PragmaLangBB']
@@ -477,7 +477,7 @@ class PragmaDeviceAwareTransformer(DeviceAwareMixin, PragmaShmTransformer):
 class PragmaLangBB(LangBB):
 
     @classmethod
-    def _make_sections_from_imask(cls, f, imask):
+    def _make_symbolic_sections_from_imask(cls, f, imask):
         datasize = cls._map_data(f)
         if imask is None:
             imask = [FULL]*len(datasize)
@@ -493,14 +493,27 @@ class PragmaLangBB(LangBB):
                     start, size = i, 1
             sections.append((start, size))
 
-        # Unroll (or "flatten") then remaining Dimensions not captured by `imask`
+        # Unroll (or "flatten") the remaining Dimensions not captured by `imask`
         if len(imask) < len(datasize):
             try:
                 start, size = sections.pop(-1)
             except IndexError:
                 start, size = (0, 1)
             remainder_size = prod(datasize[len(imask):])
-            sections.append((start*remainder_size, size*remainder_size))
+            # The reason we may see a Wildcard is detailed in the `linearize_transfer`
+            # pass, take a look there for more info. Basically, a Wildcard here means
+            # that the symbol `start` is actually a temporary whose value already
+            # represents the unrolled size
+            if not isinstance(start, Wildcard):
+                start *= remainder_size
+            size *= remainder_size
+            sections.append((start, size))
+
+        return sections
+
+    @classmethod
+    def _make_sections_from_imask(cls, f, imask):
+        sections = cls._make_symbolic_sections_from_imask(f, imask)
 
         sections = ['[%s:%s]' % (ccode(start), ccode(size)) for start, size in sections]
         sections = ''.join(sections)
