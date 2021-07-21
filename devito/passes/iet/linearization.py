@@ -191,17 +191,18 @@ def linearize_transfers(iet, sregistry):
         exprs = []
         if len(imask) < len(imask0):
             assert len(imask) == 1
-            _, size = imask[0]
+            start, size = imask[0]
 
-            name = sregistry.make_name(prefix='%s_ofs' % n.function.name)
-            wildcard = Wildcard(name=name, dtype=np.int32, is_const=True)
+            if start != 0:  # Spare the ugly generated code if unneccesary (occurs often)
+                name = sregistry.make_name(prefix='%s_ofs' % n.function.name)
+                wildcard = Wildcard(name=name, dtype=np.int32, is_const=True)
 
-            symsect = PragmaLangBB._make_symbolic_sections_from_imask(n.function, imask)
-            assert len(symsect) == 1
-            start, _ = symsect[0]
-            exprs.append(LocalExpression(DummyEq(wildcard, start)))
+                symsect = PragmaLangBB._make_symbolic_sections_from_imask(n.function, imask)
+                assert len(symsect) == 1
+                start, _ = symsect[0]
+                exprs.append(LocalExpression(DummyEq(wildcard, start)))
 
-            imask = [(wildcard, size)]
+                imask = [(wildcard, size)]
 
         rebuilt = n._rebuild(imask=imask)
 
