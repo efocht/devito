@@ -234,7 +234,11 @@ class TestStreaming(object):
         assert len(piters) == 1
         assert type(piters.pop()) == OmpIteration
 
-    def test_tasking_multi_output(self):
+    @pytest.mark.parametrize('opt', [
+        ('tasking', 'orchestrate'),
+        ('tasking', 'orchestrate', {'linearize': True}),
+    ])
+    def test_tasking_multi_output(self, opt):
         nt = 10
         bundle0 = Bundle()
         grid = Grid(shape=(10, 10, 10), subdomains=bundle0)
@@ -251,7 +255,7 @@ class TestStreaming(object):
                    subdomain=bundle0)]
 
         op0 = Operator(eqns, opt=('noop', {'gpu-fit': usave}))
-        op1 = Operator(eqns, opt=('tasking', 'orchestrate'))
+        op1 = Operator(eqns, opt=opt)
 
         # Check generated code
         assert len(retrieve_iteration_tree(op1)) == 4
@@ -301,6 +305,7 @@ class TestStreaming(object):
     @pytest.mark.parametrize('opt,ntmps', [
         pytest.param(('streaming', 'orchestrate'), 0, marks=skipif('device-openmp')),
         (('buffering', 'streaming', 'orchestrate'), 1),
+        (('buffering', 'streaming', 'orchestrate', {'linearize': True}), 1),
     ])
     def test_streaming_basic(self, opt, ntmps):
         nt = 10
@@ -620,7 +625,11 @@ class TestStreaming(object):
         assert np.all(usave.data == usave1.data)
         assert np.all(vsave.data == vsave1.data)
 
-    def test_composite_full(self):
+    @pytest.mark.parametrize('opt', [
+        ('buffering', 'tasking', 'streaming', 'orchestrate'),
+        ('buffering', 'tasking', 'streaming', 'orchestrate', {'linearize': True}),
+    ])
+    def test_composite_full(self, opt):
         nt = 10
         grid = Grid(shape=(4, 4))
 
@@ -637,7 +646,7 @@ class TestStreaming(object):
                 Eq(v.forward, u + v + v.backward)]
 
         op0 = Operator(eqns, opt=('noop', {'gpu-fit': (u, v)}))
-        op1 = Operator(eqns, opt=('buffering', 'tasking', 'streaming', 'orchestrate'))
+        op1 = Operator(eqns, opt=opt)
 
         # Check generated code
         assert len(retrieve_iteration_tree(op1)) == 7
@@ -680,13 +689,14 @@ class TestStreaming(object):
         assert np.all(u.data == u1.data)
         assert np.all(usave.data == usave1.data)
 
-    @pytest.mark.parametrize('opt,gpu_fit,async_degree', [
-        (('tasking', 'orchestrate'), True, None),
-        (('buffering', 'tasking', 'orchestrate'), True, None),
-        (('buffering', 'tasking', 'orchestrate'), False, None),
-        (('buffering', 'tasking', 'orchestrate'), False, 3),
+    @pytest.mark.parametrize('opt,gpu_fit,async_degree,linearize', [
+        (('tasking', 'orchestrate'), True, None, False),
+        (('buffering', 'tasking', 'orchestrate'), True, None, False),
+        (('buffering', 'tasking', 'orchestrate'), False, None, False),
+        (('buffering', 'tasking', 'orchestrate'), False, 3, False),
+        (('buffering', 'tasking', 'orchestrate'), False, 3, True),
     ])
-    def test_save(self, opt, gpu_fit, async_degree):
+    def test_save(self, opt, gpu_fit, async_degree, linearize):
         nt = 10
         grid = Grid(shape=(300, 300, 300))
         time_dim = grid.time_dim
@@ -701,7 +711,8 @@ class TestStreaming(object):
 
         op = Operator([Eq(u.forward, u + 1), Eq(usave, u.forward)],
                       opt=(opt, {'gpu-fit': usave if gpu_fit else None,
-                                 'buf-async-degree': async_degree}))
+                                 'buf-async-degree': async_degree,
+                                 'linearize': linearize}))
 
         op.apply(time_M=nt-1)
 
@@ -735,7 +746,11 @@ class TestStreaming(object):
         assert all(np.all(usave.data[i] == 2*i + 1) for i in range(usave.save))
         assert all(np.all(vsave.data[i] == 2*i + 1) for i in range(vsave.save))
 
-    def test_save_w_shifting(self):
+    @pytest.mark.parametrize('opt', [
+        ('buffering', 'tasking', 'orchestrate'),
+        ('buffering', 'tasking', 'orchestrate', {'linearize': True}),
+    ])
+    def test_save_w_shifting(self, opt):
         factor = 4
         nt = 19
         grid = Grid(shape=(11, 11))
@@ -751,7 +766,7 @@ class TestStreaming(object):
         eqns = [Eq(u.forward, u + 1.),
                 Eq(usave.subs(time_subsampled, time_subsampled - save_shift), u)]
 
-        op = Operator(eqns, opt=('buffering', 'tasking', 'orchestrate'))
+        op = Operator(eqns, opt=opt)
 
         # Starting at time_m=10, so time_subsampled - save_shift is in range
         op.apply(time_m=10, time_M=nt-2, save_shift=3)
