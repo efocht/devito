@@ -85,12 +85,13 @@ def linearize_accesses(iet, cache, sregistry):
         for n, (d, _) in enumerate(v):
             expr = prod(list(zip(*v[n:]))[1])
             try:
-                s = built[expr]
+                stmt = built[expr]
             except KeyError:
                 name = sregistry.make_name(prefix='%s_slc' % d.name)
-                s = built[expr] = Symbol(name=name, dtype=np.int32, is_const=True)
-                cache[f].stmts1.append(LocalExpression(DummyEq(s, expr)))
-            mapper[f].append(s)
+                s = Symbol(name=name, dtype=np.int32, is_const=True)
+                stmt = built[expr] = LocalExpression(DummyEq(s, expr))
+            mapper[f].append(stmt.write)
+            cache[f].stmts1.append(stmt)
     mapper.update([(f, []) for f in functions if f not in mapper])
 
     # Build defines. For example:
