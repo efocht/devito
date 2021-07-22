@@ -3,8 +3,10 @@ import cgen
 from sympy import Min, Max
 from devito.ir.iet import (List, Prodder, FindNodes, Transformer, filter_iterations,
                            retrieve_iteration_tree)
+from devito.ir.support import Forward
 from devito.logger import warning
 from devito.passes.iet.engine import iet_pass
+from devito.symbolics import MIN, MAX
 from devito.tools import split, is_integer
 
 __all__ = ['avoid_denormals', 'hoist_prodders', 'finalize_loop_bounds', 'is_on_device']
@@ -56,13 +58,13 @@ def hoist_prodders(iet):
 @iet_pass
 def finalize_loop_bounds(iet, **kwargs):
     """
-    This pass is adjusting the bounds of space-blocked loops in order to
-    include the "remainder regions". The iterations in the input IET span
-    only to the extent of the last space block that can be fully iterated,
-    thus missing the "remainder" part.
+    This pass adjusts the bounds of blocked Iterations in order to include the "remainder
+    regions".  Without the relaxation that occurs in this pass, the only way to iterate
+    over the entire iteration space is to have step increments that are perfect divisors
+    of the iteration space (e.g. in case of an iteration space of size 67 and block size
+    8 only 64 iterations would be computed, as `67 - 67mod8 = 64`.
 
-    A simple example (blocking only), nested Iterations are
-    transformed from:
+    A simple 1D example: nested Iterations are transformed from:
 
     <Iteration x0_blk0; (x_m, x_M, x0_blk0_size)>
         <Iteration x; (x0_blk0, x0_blk0 + x0_blk0_size - 1, 1)>
@@ -71,12 +73,10 @@ def finalize_loop_bounds(iet, **kwargs):
 
     <Iteration x0_blk0; (x_m, x_M, x0_blk0_size)>
         <Iteration x; (x0_blk0, MIN(x_M, x0_blk0 + x0_blk0_size - 1)), 1)>
-
     """
 
     mapper = {}
     for tree in retrieve_iteration_tree(iet):
-        # import pdb;pdb.set_trace()
         iterations = [i for i in tree if i.dim.is_Incr]
         if not iterations:
             continue
@@ -85,6 +85,7 @@ def finalize_loop_bounds(iet, **kwargs):
         if root in mapper:
             continue
 
+        assert all(i.direction is Forward for i in iterations)
         outer, inner = split(iterations, lambda i: not i.dim.parent.is_Incr)
 
         # Get symbolic_max out of each outer dimension
@@ -104,15 +105,8 @@ def finalize_loop_bounds(iet, **kwargs):
         for n, i in enumerate(inner):
             # assert i.direction is Forward
 
-            if (i.dim.parent in proc_parents_max and
-               i.symbolic_size == i.dim.parent.step):
-
-                # Special case: A parent dimension may have already been processed
-                # as a member of 'inner' iterations. In this case we can use parent's
-                # Max
-                # Usually encountered in hierarchical blocking (BLOCKLEVELS > 1)
-                it_max = proc_parents_max[i.dim.parent]
-                # symbolic_min = proc_parents_min[i.dim.parent]
+            if i.dim.parent in proc_parents_max and i.symbolic_size == i.dim.parent.step:
+                iter_max = proc_parents_max[i.dim.parent]
 
                 if skew_dim and not i.dim.is_Time:
                     # symbolic_min = i.symbolic_min - skew_dim
@@ -125,7 +119,7 @@ def finalize_loop_bounds(iet, **kwargs):
                 # Candidate 1: symbolic_max of current iteration
                 # e.g.
                 # i.symbolic_max = x0_blk0 + x0_blk0_size
-                symbolic_max = i.symbolic_max
+                # symbolic_max = i.symbolic_max
 
                 # Candidate 2: The domain max. Usualy it is the max of parent/root
                 # dimension.
@@ -140,34 +134,34 @@ def finalize_loop_bounds(iet, **kwargs):
                 # in order not to drop iterations. So Candidate 2 is the maximum of the
                 # root's max and the current iteration's required max
                 # and instead of `x_M` we may need `x_M + 1` or `x_M + 2`
-                root_max = roots_max[i.dim.root]
-
-                lb_margin = i.symbolic_min - i.dim.symbolic_min
-                size_margin = i.symbolic_size - i.dim.parent.step
-                upper_margin = i.dim.parent.symbolic_max + size_margin + lb_margin
+                root_max = roots_max[i.dim.root] + i.symbolic_max - i.dim.symbolic_max
 
                 # Domain max candidate
                 # e.g. domain_max = Max(x_M + 1, x_M)
-                if skew_dim and not i.dim.is_Time:
-                    domain_max = Max(upper_margin, root_max + skew_dim)
-                else:
-                    domain_max = Max(upper_margin, root_max)
-                # Finally our upper bound is the minimum of upper bound candidates
-                # e.g. upper_bound = Min(x0_blk0 + x0_blk0_size, domain_max)
-                it_max = Min(symbolic_max, domain_max)
 
                 if skew_dim and not i.dim.is_Time:
-                    symbolic_min = Max(i.symbolic_min, roots_min[i.dim.root] + skew_dim)
+                    iter_max = MIN(i.symbolic_max, root_max + skew_dim)
+                    # domain_max = MAX(upper_margin, root_max + skew_dim)
+                else:
+                    iter_max = MIN(i.symbolic_max, root_max)
+                    # Finally our upper bound is the minimum of upper bound candidates
+                # e.g. upper_bound = Min(x0_blk0 + x0_blk0_size, domain_max)
+                # iter_max = MIN(i.symbolic_max, root_max)
+
+                # Min(symbolic_max, domain_max)
+
+                if skew_dim and not i.dim.is_Time:
+                    symbolic_min = MAX(i.symbolic_min, roots_min[i.dim.root] + skew_dim)
                 else:
                     symbolic_min = i.symbolic_min
 
             # Store the selected maximum of this iteration's dimension for
             # possible reference in case of children iterations
             # Usually encountered in subdims and hierarchical blocking
-            proc_parents_max[i.dim] = it_max
+            proc_parents_max[i.dim] = iter_max
             proc_parents_min[i.dim] = symbolic_min
 
-            mapper[i] = i._rebuild(limits=(symbolic_min, it_max, i.step))
+            mapper[i] = i._rebuild(limits=(symbolic_min, iter_max, i.step))
 
         for n, i in enumerate(outer):
             # assert i.direction is Forward
