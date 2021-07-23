@@ -5,6 +5,7 @@ from subprocess import PIPE, Popen, DEVNULL
 from cached_property import cached_property
 import cpuinfo
 import numpy as np
+import os
 import psutil
 import re
 
@@ -13,10 +14,11 @@ from devito.tools import all_equal, memoized_func
 
 __all__ = ['platform_registry', 'get_cpu_info', 'get_gpu_info',
            'Platform', 'Cpu64', 'Intel64', 'Amd', 'Arm', 'Power', 'Device',
-           'NvidiaDevice', 'AmdDevice',
+           'NvidiaDevice', 'AmdDevice', 'NecVeDevice',
            'INTEL64', 'SNB', 'IVB', 'HSW', 'BDW', 'SKX', 'KNL', 'KNL7210',  # Intel
            'AMD', 'ARM', 'POWER8', 'POWER9',  # Other CPU architectures
-           'AMDGPUX', 'NVIDIAX']  # GPUs
+           'AMDGPUX', 'NVIDIAX', # GPUs
+           'NECVEX']  # Vector Engine
 
 
 @memoized_func
@@ -520,6 +522,32 @@ class AmdDevice(Device):
             return fallback
 
 
+class NecVeDevice(Device):
+
+    @cached_property
+    def march(self):
+        import os
+        # pathlib requires at least python 3.5
+        from pathlib import Path
+        SYSPATH = "/sys/class/ve"
+        try:
+            ves = next(os.walk(SYSPATH))[1]
+            SYSPATH += "/" + ves[0]
+            model = Path(SYSPATH + "/partitioning_mode").read_text().rstrip("\n")
+            self.model = "ve" + model
+            num_cores = Path(SYSPATH + "/num_of_core").read_text().rstrip("\n")
+            partitioning_mode = Path(SYSPATH + "/partitioning_mode").read_text().rstrip("\n")
+            if partitioning_mode is '1':
+                self.logical_cores = seöf.physical_cores = num_cores / 2
+            else:
+                self.logical_cores = seöf.physical_cores = num_cores
+            # self.isa = "necve"
+            return "ve" + model
+        except:
+            pass
+        return None
+
+
 # CPUs
 CPU64 = Cpu64('cpu64')
 CPU64_DUMMY = Intel64('cpu64-dummy', cores_logical=2, cores_physical=1, isa='sse')
@@ -541,6 +569,7 @@ POWER9 = Power('power9')
 # Devices
 NVIDIAX = NvidiaDevice('nvidiaX')
 AMDGPUX = AmdDevice('amdgpuX')
+NECVEX = NecVeDevice('necveX')
 
 
 platform_registry = {
@@ -560,7 +589,8 @@ platform_registry = {
     'power8': POWER8,
     'power9': POWER9,
     'nvidiaX': NVIDIAX,  # Generic NVidia GPU
-    'amdgpuX': AMDGPUX   # Generic AMD GPU
+    'amdgpuX': AMDGPUX,   # Generic AMD GPU
+    'necveX': NECVEX   # NEC Vector Engine
 }
 """
 Registry dict for deriving Platform classes according to the environment variable
@@ -578,6 +608,7 @@ isa_registry = {
     'altivec': 16,
     'fp': 8,
     'asimd': 16,
-    'asimdrdm': 16
+    'asimdrdm': 16,
+    'necve': 256 * 8
 }
 """Size in bytes of a SIMD register in known ISAs."""

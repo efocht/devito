@@ -12,7 +12,7 @@ import numpy.ctypeslib as npct
 from codepy.jit import compile_from_string
 from codepy.toolchain import GCCToolchain
 
-from devito.arch import AMDGPUX, NVIDIAX, SKX, POWER8, POWER9
+from devito.arch import AMDGPUX, NVIDIAX, SKX, POWER8, POWER9, NECVEX
 from devito.exceptions import CompilationError
 from devito.logger import debug, warning, error
 from devito.parameters import configuration
@@ -408,6 +408,13 @@ class ClangCompiler(Compiler):
                                  '-fopenmp-targets=amdgcn-amd-amdhsa',
                                  '-Xopenmp-target=amdgcn-amd-amdhsa']
                 self.ldflags += ['-march=%s' % platform.march]
+        elif platform is NECVEX:
+            self.cflags.remove('-std=c99')
+            # Add flags for OpenMP offloading
+            if language in ['C', 'openmp']:
+                self.ldflags += ['-target', 'x86_64-pc-linux-gnu']
+                self.ldflags += ['-fopenmp',
+                                 '-fopenmp-targets=ve-linux']
         else:
             if platform in [POWER8, POWER9]:
                 # -march isn't supported on power architectures
