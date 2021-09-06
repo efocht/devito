@@ -413,8 +413,11 @@ class ClangCompiler(Compiler):
             # Add flags for OpenMP offloading
             if language in ['C', 'openmp']:
                 self.ldflags += ['-target', 'x86_64-pc-linux-gnu']
-                self.ldflags += ['-fopenmp',
-                                 '-fopenmp-targets=ve-linux']
+                self.ldflags += ['-fopenmp']
+                if environ.get("VE_OMPT_SOTOC", "").lower().startswith(("y", "1")):
+                    self.ldflags += ['-fopenmp-targets=aurora-nec-veort']
+                else:
+                    self.ldflags += ['-fopenmp-targets=ve-linux']
         else:
             if platform in [POWER8, POWER9]:
                 # -march isn't supported on power architectures
