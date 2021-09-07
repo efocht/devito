@@ -37,7 +37,9 @@ Set the environment variables for using LLVM-VE:
 
 ```
 git clone https://github.com/efocht/devito.git
+cd devito
 git checkout nec-ve
+cd ..
 
 pip3 install --user file://$(pwd)/devito
 ```
